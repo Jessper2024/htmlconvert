@@ -1,26 +1,15 @@
-# HTML 格式转换器：在线部署
+# HTML 格式转换器
 
-目录中的 `index.html` 是完整的静态网页，不依赖 Python、数据库或后端接口。
+在线地址：<https://jessper2024.github.io/htmlconvert/>
 
-## GitHub Pages
+这个静态网页把 SingleFile 保存的 HTML/HTM 文档清理成可导入 Sigil 的单章 XHTML。
 
-1. 新建一个 GitHub 仓库。
-2. 上传 `index.html`。
-3. 在仓库设置中打开 Pages，选择 `main` 分支和根目录。
-4. GitHub 会生成一个公开网址，其他人打开即可使用。
+## 使用方式
 
-## Netlify
+1. 选择或拖入一个或多个 SingleFile HTML 文件。
+2. 点击“批量转换”。
+3. 下载生成的 `原文件名-Sigil.xhtml`，再在 Sigil 中选择“添加现有文件”。
 
-将整个文件夹拖到 Netlify 的部署页面即可获得公开网址。
+工具只生成 XHTML，不生成或下载 EPUB。转换完全在每位使用者的浏览器中完成，原始文件不会上传到服务器。
 
-## 隐私
-
-转换在每个使用者自己的浏览器中完成，HTML 文件不会上传到服务器。网页只负责提供界面和下载结果。
-
-## 注意
-
-网页只生成一种结果：
-
-- `原文件名-Sigil.xhtml`：符合 XML/XHTML 的单章正文，下载后导入 Sigil，再由 Sigil 生成 EPUB。
-
-网页不会直接生成或下载 EPUB，也不会把文件上传到服务器。原文中的外链图片仍可能受原网站链接有效期影响。
+外链图片仍受原网站链接有效期影响；内嵌图片会随 XHTML 保留。
