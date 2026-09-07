@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTML 格式转换器</title>
+  <style>
+    :root { color-scheme: light; --ink:#17212b; --muted:#687583; --line:#dbe3e8; --paper:#fff; --bg:#f3f6f7; --accent:#147d72; --accent-dark:#0d675d; --danger:#b23b3b; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC",Arial,sans-serif; }
+    main { width:min(1080px,calc(100% - 32px)); margin:auto; padding:42px 0 56px; }
+    header { display:flex; justify-content:space-between; align-items:flex-end; gap:28px; margin-bottom:25px; }
+    .eyebrow { margin:0 0 7px; color:var(--accent); font-size:12px; letter-spacing:.16em; font-weight:700; }
+    h1 { margin:0; font-size:clamp(28px,4vw,40px); line-height:1.15; letter-spacing:0; }
+    .lead { max-width:520px; margin:0; color:var(--muted); }
+    .panel { background:var(--paper); border:1px solid var(--line); border-radius:9px; box-shadow:0 8px 24px rgba(20,35,45,.045); }
+    .import-panel { padding:20px; }
+    .drop { display:block; padding:27px 22px; text-align:center; border:1.5px dashed #a9bac4; border-radius:8px; background:#fbfcfc; cursor:pointer; transition:.16s ease; }
+    .drop:hover,.drop.dragover { border-color:var(--accent); background:#eff9f7; }
+    .drop strong { display:block; font-size:17px; }
+    .drop span { display:block; margin-top:4px; color:var(--muted); font-size:13px; }
+    #fileInput { display:none; }
+    .toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
+    button { border:0; border-radius:6px; padding:10px 15px; color:#fff; background:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
+    button:hover:not(:disabled) { background:var(--accent-dark); }
+    button:disabled { cursor:not-allowed; opacity:.43; }
+    button.secondary { color:var(--ink); background:#e8eef0; }
+    button.secondary:hover:not(:disabled) { background:#dce6e9; }
+    button.ghost { padding:6px 9px; color:var(--accent-dark); background:transparent; font-size:13px; }
+    button.ghost:hover:not(:disabled) { background:#edf7f5; }
+    .status { min-height:24px; margin:12px 0 0; color:var(--muted); font-size:13px; }
+    .status.error { color:var(--danger); }
+    .status.ok { color:var(--accent-dark); }
+    .queue-panel { margin-top:20px; overflow:hidden; }
+    .queue-head { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:17px 20px; border-bottom:1px solid var(--line); }
+    .queue-head h2 { margin:0; font-size:17px; }
+    .summary { color:var(--muted); font-size:13px; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; min-width:650px; }
+    th,td { padding:12px 20px; border-bottom:1px solid #edf1f3; text-align:left; vertical-align:middle; }
+    th { color:var(--muted); background:#fbfcfc; font-size:12px; font-weight:700; }
+    tbody tr:last-child td { border-bottom:0; }
+    .file-cell { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+    .size-cell { color:var(--muted); white-space:nowrap; font-size:13px; }
+    .badge { display:inline-flex; align-items:center; min-width:52px; justify-content:center; padding:3px 8px; border-radius:999px; background:#eef2f3; color:var(--muted); font-size:12px; }
+    .badge.processing { color:#7c5a0d; background:#fff5d7; }
+    .badge.success { color:#12695f; background:#e3f5f1; }
+    .badge.failed { color:#a62f2f; background:#fbe9e9; }
+    .empty { padding:30px 20px; color:var(--muted); text-align:center; }
+    .result-panel { display:none; margin-top:20px; padding:20px; }
+    .result-panel.visible { display:block; }
+    .result-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+    .result-head h2 { margin:0; font-size:17px; }
+    .meta { margin:4px 0 0; color:var(--muted); font-size:13px; }
+    .preview { max-height:320px; overflow:auto; margin-top:16px; padding:17px 19px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+    .preview img { max-width:100%; height:auto; }
+    .preview p { margin:0 0 1em; }
+    details { margin-top:15px; }
+    summary { color:var(--muted); cursor:pointer; font-size:13px; }
+    textarea { display:block; width:100%; min-height:130px; margin-top:8px; padding:9px; border:1px solid var(--line); border-radius:6px; resize:vertical; color:#384652; background:#fafcfd; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    footer { margin-top:20px; color:var(--muted); font-size:12px; }
+    @media (max-width:680px) { main{width:min(100% - 22px,1080px);padding-top:28px} header{display:block} .lead{margin-top:10px} .queue-head{align-items:flex-start;display:block} .summary{display:block;margin-top:4px} .result-head{display:block} .result-head button{margin-top:13px} }
+  </style>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">SINGLEFILE → SIGIL XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可直接导入 Sigil 的单章 XHTML。文件只在本机浏览器中处理，不会上传。</p></header>
+    <section class="panel import-panel">
+      <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
+      <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
+      <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
+      <p class="status" id="status">等待添加文件</p>
+    </section>
+    <section class="panel queue-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
+    <section class="panel result-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
+    <footer>下载的 XHTML 是供 Sigil 后续编辑和生成 EPUB 的单章正文，不是 EPUB 压缩包。批量下载可能需要允许浏览器进行多次下载。</footer>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const allowed = new Set(["alt","class","height","href","id","lang","rel","src","style","target","title","width"]);
+    const removeTags = new Set(["button","canvas","form","iframe","input","link","meta","script","select","style","svg","template","textarea","aside","footer","header","nav","noscript"]);
+    const state = { items: [], current: null, converting: false };
+    function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
+    function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
+    function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
+    function safeStyle(value) { return !/url\s*\(\s*["']?\s*(?:javascript|vbscript):/i.test(value); }
+    function cleanArticle(article) { const clone = article.cloneNode(true), walker = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT), nodes = [clone]; while (walker.nextNode()) nodes.push(walker.currentNode); for (const node of nodes) { if (removeTags.has(node.tagName.toLowerCase())) { node.remove(); continue; } for (const attr of [...node.attributes]) { const name = attr.name.toLowerCase(); if (!allowed.has(name) || name.startsWith("on") || (name === "style" && !safeStyle(attr.value)) || ((name === "href" || name === "src") && !safeUrl(name, attr.value))) node.removeAttribute(attr.name); } } return clone; }
+    function convertHtml(raw, fileName) {
+      const doc = new DOMParser().parseFromString(raw, "text/html"), article = doc.querySelector("#js_content, article, main, [role='main'], body"); if (!article) throw new Error("未找到可转换的正文区域");
+      const title = (doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", cleaned = cleanArticle(article);
+      const xml = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html", null), root = xml.documentElement; root.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+      const head = xml.createElementNS(root.namespaceURI, "head"), meta = xml.createElementNS(root.namespaceURI, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
+      const titleEl = xml.createElementNS(root.namespaceURI, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(root.namespaceURI, "style"); style.setAttribute("type", "text/css"); style.textContent = "body { margin: 0 auto; padding: 1em; max-width: 44em; line-height: 1.6; } img { max-width: 100%; height: auto; }"; head.append(style); root.append(head);
+      const body = xml.createElementNS(root.namespaceURI, "body"); if (cleaned.tagName.toLowerCase() === "body") [...cleaned.childNodes].forEach(child => body.append(xml.importNode(child, true))); else body.append(xml.importNode(cleaned, true)); root.append(body); const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
+      const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查"); const base = fileName.replace(/\.[^.]+$/, ""); return { output, title, paragraphs: cleaned.querySelectorAll("p").length, name: `${base}-Sigil.xhtml`, preview: cleaned };
+    }
+    function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
+    function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
+    function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    function showResult(item) { if (!item.output) return; state.current = item; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
+    $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
+    $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
+    $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
+  </script>
+</body>
+</html>
