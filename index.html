@@ -155,8 +155,8 @@ a { color: inherit; }
       return textOf(doc.getElementById("js_name"));
     }
     const notionPropertyAliases = {
-      "作者": ["作者", "作者名", "author", "created by", "创建者"],
-      "发布时间": ["发布时间", "发布日期", "published", "publish date", "published date", "date", "日期", "创建时间", "created time"]
+      "作者": ["作者", "作者名", "作者（author）", "author", "created by", "创建者"],
+      "发布时间": ["发布时间", "发布日期", "发布日期（published）", "published", "publish date", "published date", "date", "日期", "创建时间", "created time"]
     };
     function normaliseNotionLabel(value) { return normaliseText(value).trim().replace(/[：:]$/u, "").replace(/\s+/g, " ").toLocaleLowerCase(); }
     function notionProperty(doc, label) {
