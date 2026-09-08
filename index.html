@@ -120,7 +120,7 @@ a { color: inherit; }
     function isCentered(node) { const value = styleValue(node, "text-align"); return node.getAttribute?.(centerMarker) === "1" || value === "center" || node.getAttribute?.("align")?.toLowerCase() === "center" || /(?:^|\s)(?:center|text-center)(?:\s|$)/i.test(node.getAttribute?.("class") || ""); }
     function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
     function hasBlockChild(node) { return [...node.children].some(isBlock); }
-    function textOf(node) { return normaliseText(node.textContent).trim(); }
+    function textOf(node) { return normaliseText(node?.textContent || "").trim(); }
     function extractArticleMeta(doc) {
       const values = [], ids = ["copyright_logo","js_author_name_text","js_author_name","js_name","publish_time","js_ip_wording"];
       for (const id of ids) { const value = textOf(doc.getElementById(id)); if (value && !values.includes(value)) values.push(value); }
