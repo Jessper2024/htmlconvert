@@ -447,8 +447,12 @@ a { color: inherit; }
     }
     function stripNotionPropertyPanel(root) {
       for (const table of [...root.querySelectorAll('[role="table"]')]) {
-        const tableText = textOf(table);
-        if (tableText.includes("作者") || tableText.includes("发布时间")) table.remove();
+        const propertyLabels = new Set(Object.values(notionPropertyAliases).flat().map(normaliseNotionLabel));
+        const rowLabels = [...table.querySelectorAll('[role="row"]')].map(row => {
+          const cell = row.querySelector('[role="cell"]');
+          return cell ? normaliseNotionLabel(textOf(cell)) : "";
+        });
+        if (rowLabels.some(label => propertyLabels.has(label))) table.remove();
       }
       return root;
     }
