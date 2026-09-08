@@ -412,6 +412,15 @@ a { color: inherit; }
       return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p" && !node.classList.contains("article-meta")).length };
     }
     function selectArticle(doc, processType = "wechat") {
+      // Newer Notion/SingleFile exports keep page properties and page blocks
+      // under the same main element. Prefer the dedicated page-content node
+      // so UI chrome such as “more properties” and “Add 标签” never enters
+      // the exported XHTML. Older captures without this class still use the
+      // existing fallbacks below.
+      if (processType === "notion") {
+        const pageContent = doc.querySelector(".notion-page-content");
+        if (pageContent) return pageContent;
+      }
       const candidate = doc.querySelector("#js_content");
       if (candidate && (candidate.children.length || textOf(candidate))) return candidate;
       if (candidate?.parentElement) {
