@@ -412,16 +412,6 @@ a { color: inherit; }
       return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p" && !node.classList.contains("article-meta")).length };
     }
     function selectArticle(doc, processType = "wechat") {
-      if (processType === "notion") {
-        const notionContent = doc.querySelector('.notion-page-content');
-        if (notionContent && (notionContent.children.length || textOf(notionContent))) return notionContent;
-        const notionBlocks = [...doc.querySelectorAll('.notion-text-block, .notion-header-block, .notion-image-block, .notion-bulleted_list-block, .notion-numbered_list-block, .notion-quote-block, .notion-callout-block, .notion-code-block')];
-        if (notionBlocks.length) {
-          const container = document.createElement('div');
-          for (const block of notionBlocks) if (!notionBlocks.some(parent => parent !== block && parent.contains(block))) container.append(block.cloneNode(true));
-          if (container.children.length) return container;
-        }
-      }
       const candidate = doc.querySelector("#js_content");
       if (candidate && (candidate.children.length || textOf(candidate))) return candidate;
       if (candidate?.parentElement) {
@@ -434,6 +424,13 @@ a { color: inherit; }
       }
       return candidate || doc.querySelector("article") || doc.querySelector("main") || doc.querySelector("[role='main']") || doc.body;
     }
+    function stripNotionPropertyPanel(root) {
+      for (const table of [...root.querySelectorAll('[role="table"]')]) {
+        const tableText = textOf(table);
+        if (tableText.includes("作者") || tableText.includes("发布时间")) table.remove();
+      }
+      return root;
+    }
     function convertHtml(raw, fileName, processType = state.processType) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
@@ -441,13 +438,20 @@ a { color: inherit; }
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, normalised = normaliseArticle(article, title, metadata);
+      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article, normalised = normaliseArticle(articleForNormalise, title, metadata);
       if (processType === "notion") {
         const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
         normalised.blocks = normalised.blocks.flatMap(block => {
           const blockText = textOf(block), tag = block.tagName?.toLowerCase();
-          if (["h1", "h2"].includes(tag) && blockText === baseTitle) return [];
-          if (["h1", "h2"].includes(tag) && dateLabels.has(blockText)) { const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph]; }
+          // Notion/SingleFile exports are inconsistent: the page title and
+          // property date may arrive as h1/h2, p, or a layout div after
+          // normalisation.  Match the exact block text rather than relying
+          // on the source tag so the duplicate title can never survive.
+          if (blockText === baseTitle) return [];
+          if (dateLabels.has(blockText)) {
+            if (tag === "p") { block.className = "body-text"; return [block]; }
+            const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph];
+          }
           return [block];
         });
       }
