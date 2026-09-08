@@ -158,9 +158,11 @@ a { color: inherit; }
       return visit(node) && found;
     }
     function isHeadingText(text) { return text.length > 0 && text.length <= 60 && sectionTitleRe.test(text); }
+    function isNumberedProse(text) { return /^\s*\d+\s*[、]/.test(text || ""); }
     function isHeadingSource(node, text = textOf(node)) {
       const tag = node.tagName?.toLowerCase() || "";
       const centered = (tag === "p" || tag === "section") && node.getAttribute?.(centerMarker) && !hasBlockChild(node);
+      if (isNumberedProse(text)) return false;
       return ["h1","h2","h3","h4","h5","h6"].includes(tag) || isHeadingText(text) || Boolean(centered);
     }
     function cleanTree(root) {
@@ -349,8 +351,8 @@ a { color: inherit; }
     function normaliseBlock(node) {
       const tag = node.tagName.toLowerCase();
       if (tag === "p") return normaliseParagraph(node);
-      if (tag === "section") { if (onlyBreaks(node)) return [makeSpacer()]; if (!hasBlockChild(node) && (isHeadingText(textOf(node)) || isCentered(node))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; } return normaliseContainer(node); }
-      if (["h1","h2","h3","h4","h5","h6"].includes(tag)) { const heading = document.createElement(tag === "h1" ? "h1" : "h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; }
+      if (tag === "section") { if (onlyBreaks(node)) return [makeSpacer()]; if (!hasBlockChild(node) && !isNumberedProse(textOf(node)) && (isHeadingText(textOf(node)) || isCentered(node))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; } return normaliseContainer(node); }
+      if (["h1","h2","h3","h4","h5","h6"].includes(tag)) { if (isNumberedProse(textOf(node))) { const paragraph = document.createElement("p"); for (const child of node.childNodes) appendInline(paragraph, child); return finishParagraph(paragraph, node); } const heading = document.createElement(tag === "h1" ? "h1" : "h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; }
       if (tag === "img") { const paragraph = document.createElement("p"); paragraph.className = "image"; appendInline(paragraph, node); return [paragraph]; }
       if (tag === "br" || tag === "wbr") return [makeSpacer()];
       if (tag === "hr") { const hr = document.createElement("hr"); return [hr]; }
