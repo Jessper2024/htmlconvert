@@ -132,6 +132,17 @@ a { color: inherit; }
       const match = value.match(/(\d{4}年\d{1,2}月\d{1,2}日)/);
       return match ? match[1] : "";
     }
+    function extractAuthor(doc) {
+      // WeChat snapshots expose the displayed author in one of these fields.
+      // Keep the author separate from js_name (the account/display name) so it
+      // can be used in the downloaded filename without changing the title.
+      for (const id of ["js_author_name_text", "js_author_name"]) {
+        const value = textOf(doc.getElementById(id));
+        if (value) return value;
+      }
+      const metaAuthor = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim();
+      return metaAuthor || "";
+    }
     function safeFileStem(value) {
       return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
     }
@@ -391,7 +402,7 @@ a { color: inherit; }
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const publishDate = extractPublishDate(doc);
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = extractArticleMeta(doc), normalised = normaliseArticle(article, title, metadata);
+      const metadata = extractArticleMeta(doc), author = extractAuthor(doc), normalised = normaliseArticle(article, title, metadata);
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
@@ -409,7 +420,9 @@ a { color: inherit; }
       }
       const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
-      return { output, title, paragraphs: normalised.paragraphs, name: `${safeFileStem(title)}-Sigil.xhtml`, preview: normalised.preview };
+      const filenameParts = [publishDate, author, baseTitle].filter(Boolean);
+      const outputStem = safeFileStem(filenameParts.join("_"));
+      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
