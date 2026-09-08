@@ -56,6 +56,7 @@
     .preview h1 { margin:.67em 0; font-size:1.5em; line-height:1.2; text-align:center; }
     .preview h2.section-title { margin:.83em 0; font-size:1.375em; line-height:1.2; text-align:center; }
     .preview p { display:block; margin:7px 0 0; line-height:1.5; text-align:left; text-indent:0; white-space:normal; overflow-wrap:break-word; word-break:normal; }
+    .preview p.article-meta { margin:0 0 1em; color:#777; text-indent:0; }
     .preview p.image { text-align:center; text-indent:0; }
     .preview .spacer { display:block; height:7px; }
     .preview img { max-width:100%; height:auto; }
@@ -94,6 +95,7 @@ h1 { display: block; margin: .67em 0; font-size: 1.5em; font-weight: bold; line-
 h2.section-title, h3.section-title { display: block; margin: .83em 0; font-size: 1.375em; font-weight: bold; line-height: 1.2; text-align: center; text-indent: 0; break-after: avoid; }
 p { display: block; margin: 7px 0 0; line-height: 1.5; text-align: left; text-indent: 0; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 p.lead { font-style: italic; }
+p.article-meta { display:block; margin:0 0 1em; color:#777; text-align:left; text-indent:0; white-space:normal; }
 p.image { margin: 7px 0 0; text-align: center; text-indent: 0; }
 div.spacer { display: block; height: 7px; margin: 0; }
 blockquote { margin: 7px 2em 0; text-align: left; }
@@ -115,6 +117,12 @@ a { color: inherit; }
     function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
     function hasBlockChild(node) { return [...node.children].some(isBlock); }
     function textOf(node) { return normaliseText(node.textContent).trim(); }
+    function extractArticleMeta(doc) {
+      const values = [], ids = ["copyright_logo","js_author_name_text","js_author_name","js_name","publish_time","js_ip_wording"];
+      for (const id of ids) { const value = textOf(doc.getElementById(id)); if (value && !values.includes(value)) values.push(value); }
+      if (!values.length) { const author = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim(); if (author) values.push(author); }
+      return values;
+    }
     function hasMeaningful(node) { return Boolean(textOf(node) || node.querySelector?.("img")); }
     function onlyBreaks(node) {
       if (!node) return false;
@@ -338,17 +346,18 @@ a { color: inherit; }
       if (!hasMeaningful(node)) return [];
       const paragraph = document.createElement("p"); for (const child of node.childNodes) appendInline(paragraph, child); return finishParagraph(paragraph, node);
     }
-    function normaliseArticle(article, title) {
+    function normaliseArticle(article, title, metadata = []) {
       const cleaned = cleanTree(article.cloneNode(true)), blocks = normaliseContainer(cleaned), compact = [];
       for (const block of blocks) { if (block.classList?.contains("spacer") && compact.at(-1)?.classList?.contains("spacer")) continue; compact.push(block); }
       for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { flattenBreaks(block); pruneEmptyInline(block); }
       const hasVisibleTitle = compact.some(node => ["h1","h2"].includes(node.tagName?.toLowerCase()) && textOf(node) === title);
       if (title && !hasVisibleTitle) { const heading = document.createElement("h1"); heading.textContent = title; compact.unshift(heading); }
+      if (metadata.length) { const meta = document.createElement("p"); meta.className = "article-meta"; meta.textContent = metadata.join(" · "); compact.splice(compact[0]?.tagName?.toLowerCase() === "h1" ? 1 : 0, 0, meta); }
       let headingIndex = 0; for (const node of compact) if (node.tagName?.toLowerCase() === "h2") node.id = `section-${++headingIndex}`;
       for (const node of compact) { node.removeAttribute(centerMarker); for (const marked of node.querySelectorAll(`[${centerMarker}]`)) marked.removeAttribute(centerMarker); }
       const firstParagraph = compact.find(node => node.tagName?.toLowerCase() === "p"); if (firstParagraph && firstParagraph.querySelector("em, i")) firstParagraph.classList.add("lead");
       const preview = document.createElement("div"); compact.forEach(node => preview.append(node.cloneNode(true)));
-      return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p").length };
+      return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p" && !node.classList.contains("article-meta")).length };
     }
     function selectArticle(doc) {
       const candidate = doc.querySelector("#js_content");
@@ -365,7 +374,7 @@ a { color: inherit; }
     }
     function convertHtml(raw, fileName) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc); if (!article) throw new Error("未找到可转换的正文区域");
-      const title = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", normalised = normaliseArticle(article, title);
+      const title = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", metadata = extractArticleMeta(doc), normalised = normaliseArticle(article, title, metadata);
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
