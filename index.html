@@ -21,6 +21,11 @@
     .drop span { display:block; margin-top:4px; color:var(--muted); font-size:13px; }
     #fileInput { display:none; }
     .toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
+    .mode-control { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; padding:12px 14px; border:1px solid #e4ecee; border-radius:7px; background:#f8fbfb; }
+    .mode-control label { color:var(--ink); font-size:13px; font-weight:700; }
+    .mode-control select { min-width:190px; padding:8px 30px 8px 10px; border:1px solid #b7c9ce; border-radius:6px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
+    .mode-control select:focus { outline:2px solid rgba(20,125,114,.2); border-color:var(--accent); }
+    .mode-hint { color:var(--muted); font-size:12px; }
     button { border:0; border-radius:6px; padding:10px 15px; color:#fff; background:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
     button:hover:not(:disabled) { background:var(--accent-dark); }
     button:disabled { cursor:not-allowed; opacity:.43; }
@@ -71,6 +76,7 @@
   <main>
     <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
     <section class="panel import-panel">
+      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option></select><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
       <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
@@ -110,7 +116,7 @@ table { border-collapse: collapse; max-width: 100%; }
 img { max-width: 100%; height: auto; }
 a { color: inherit; }
 `;
-    const state = { items: [], current: null, converting: false };
+    const state = { items: [], current: null, converting: false, processType: "wechat" };
     function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
     function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
     function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
@@ -145,6 +151,17 @@ a { color: inherit; }
     }
     function extractAccountName(doc) {
       return textOf(doc.getElementById("js_name"));
+    }
+    function notionProperty(doc, label) {
+      for (const row of doc.querySelectorAll('[role="row"]')) {
+        const cells = [...row.querySelectorAll('[role="cell"]')];
+        if (cells.length >= 2 && textOf(cells[0]) === label) return textOf(cells[1]);
+      }
+      return "";
+    }
+    function notionDate(value) {
+      const match = (value || "").match(/(\d{4})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})/);
+      return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
     function safeFileStem(value) {
       return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
@@ -400,12 +417,14 @@ a { color: inherit; }
       }
       return candidate || doc.querySelector("article") || doc.querySelector("main") || doc.querySelector("[role='main']") || doc.body;
     }
-    function convertHtml(raw, fileName) {
+    function convertHtml(raw, fileName, processType = state.processType) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc); if (!article) throw new Error("未找到可转换的正文区域");
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
-      const publishDate = extractPublishDate(doc);
+      const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
+      const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
+      const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = extractArticleMeta(doc), account = extractAccountName(doc), author = extractAuthor(doc), normalised = normaliseArticle(article, title, metadata);
+      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, normalised = normaliseArticle(article, title, metadata);
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
@@ -423,7 +442,7 @@ a { color: inherit; }
       }
       const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
-      const filenameParts = [publishDate, account, author, baseTitle].filter(Boolean);
+      const filenameParts = processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
       return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview };
     }
@@ -431,8 +450,9 @@ a { color: inherit; }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
     function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
     function showResult(item) { if (!item.output) return; state.current = item; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
-    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name, state.processType); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
+    $("processType").addEventListener("change", event => { state.processType = event.target.value; $("modeHint").textContent = state.processType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。"; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件"); });
     $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
     $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
   </script>
