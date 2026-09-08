@@ -87,7 +87,11 @@
     const semanticTags = new Set(["a","abbr","b","bdi","bdo","cite","code","del","em","i","ins","kbd","mark","q","s","samp","small","strong","sub","sup","time","u","var"]);
     const inlineWrapperTags = new Set([...semanticTags, "span", "font", "center"]);
     const centerMarker = "data-sigil-centered";
-    const sectionTitleRe = /^\s*(?:\d+\s*[\/／、．.]|第\s*[0-9一二三四五六七八九十百千]+\s*[章节篇回])/;
+    // Numbered prose such as “1、今天多晶硅期货……” is ordinary body text.
+    // Only recognise explicit chapter markers, or short numbered labels, as
+    // section headings.  The length guard prevents long list entries from
+    // becoming headings even when they start with a number and punctuation.
+    const sectionTitleRe = /^\s*(?:第\s*[0-9一二三四五六七八九十百千]+\s*[章节篇回]|[0-9]+\s*[/／]\s*\S.{0,50}|[0-9]+\s*[.．]\s*\S.{0,50})/;
     const bookCss = `
 html { margin: 0; padding: 0; }
 body { display: block; margin: 0; padding: 0; color: #111; background: #fff; font-family: serif; font-size: 1em; line-height: 1.6; text-align: left; white-space: normal; overflow-wrap: break-word; }
@@ -123,6 +127,14 @@ a { color: inherit; }
       if (!values.length) { const author = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim(); if (author) values.push(author); }
       return values;
     }
+    function extractPublishDate(doc) {
+      const value = textOf(doc.getElementById("publish_time"));
+      const match = value.match(/(\d{4}年\d{1,2}月\d{1,2}日)/);
+      return match ? match[1] : "";
+    }
+    function safeFileStem(value) {
+      return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
+    }
     function hasMeaningful(node) { return Boolean(textOf(node) || node.querySelector?.("img")); }
     function onlyBreaks(node) {
       if (!node) return false;
@@ -145,7 +157,7 @@ a { color: inherit; }
       };
       return visit(node) && found;
     }
-    function isHeadingText(text) { return text.length > 0 && text.length <= 120 && sectionTitleRe.test(text); }
+    function isHeadingText(text) { return text.length > 0 && text.length <= 60 && sectionTitleRe.test(text); }
     function isHeadingSource(node, text = textOf(node)) {
       const tag = node.tagName?.toLowerCase() || "";
       const centered = (tag === "p" || tag === "section") && node.getAttribute?.(centerMarker) && !hasBlockChild(node);
@@ -374,7 +386,10 @@ a { color: inherit; }
     }
     function convertHtml(raw, fileName) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc); if (!article) throw new Error("未找到可转换的正文区域");
-      const title = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", metadata = extractArticleMeta(doc), normalised = normaliseArticle(article, title, metadata);
+      const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const publishDate = extractPublishDate(doc);
+      const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
+      const metadata = extractArticleMeta(doc), normalised = normaliseArticle(article, title, metadata);
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
@@ -392,7 +407,7 @@ a { color: inherit; }
       }
       const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
-      const base = fileName.replace(/\.[^.]+$/, ""); return { output, title, paragraphs: normalised.paragraphs, name: `${base}-Sigil.xhtml`, preview: normalised.preview };
+      return { output, title, paragraphs: normalised.paragraphs, name: `${safeFileStem(title)}-Sigil.xhtml`, preview: normalised.preview };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
