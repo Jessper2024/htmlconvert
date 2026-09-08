@@ -52,9 +52,13 @@
     .result-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
     .result-head h2 { margin:0; font-size:17px; }
     .meta { margin:4px 0 0; color:var(--muted); font-size:13px; }
-    .preview { max-height:320px; overflow:auto; margin-top:16px; padding:17px 19px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+    .preview { max-height:320px; overflow:auto; margin-top:16px; padding:17px 19px; border:1px solid var(--line); border-radius:7px; background:#fff; color:#111; font-family:serif; line-height:1.6; text-align:justify; }
+    .preview h1 { margin:.67em 0; font-size:1.5em; line-height:1.2; text-align:center; }
+    .preview h2.section-title { margin:.83em 0; font-size:1.375em; line-height:1.2; text-align:center; }
+    .preview p { display:block; margin:7px 0 0; line-height:1.5; text-indent:2em; }
+    .preview p.image { text-align:center; text-indent:0; }
+    .preview .spacer { display:block; height:7px; }
     .preview img { max-width:100%; height:auto; }
-    .preview p { margin:0 0 1em; }
     details { margin-top:15px; }
     summary { color:var(--muted); cursor:pointer; font-size:13px; }
     textarea { display:block; width:100%; min-height:130px; margin-top:8px; padding:9px; border:1px solid var(--line); border-radius:6px; resize:vertical; color:#384652; background:#fafcfd; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -64,7 +68,7 @@
 </head>
 <body>
   <main>
-    <header><div><p class="eyebrow">SINGLEFILE → SIGIL XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可直接导入 Sigil 的单章 XHTML。文件只在本机浏览器中处理，不会上传。</p></header>
+    <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文按真实段落整理，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
     <section class="panel import-panel">
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
@@ -73,26 +77,313 @@
     </section>
     <section class="panel queue-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
     <section class="panel result-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
-    <footer>下载的 XHTML 是供 Sigil 后续编辑和生成 EPUB 的单章正文，不是 EPUB 压缩包。批量下载可能需要允许浏览器进行多次下载。</footer>
+    <footer>输出是供 Sigil 后续编辑和生成 EPUB 的单章 XHTML，不是 EPUB 压缩包。正文中的视觉折行不会被写成硬换行；空白段用间距表示。批量下载可能需要允许浏览器进行多次下载。</footer>
   </main>
   <script>
     const $ = id => document.getElementById(id);
-    const allowed = new Set(["alt","class","height","href","id","lang","rel","src","style","target","title","width"]);
     const removeTags = new Set(["button","canvas","form","iframe","input","link","meta","script","select","style","svg","template","textarea","aside","footer","header","nav","noscript"]);
+    const blockTags = new Set(["address","article","blockquote","div","dl","dt","dd","figure","figcaption","h1","h2","h3","h4","h5","h6","hr","li","main","ol","p","pre","section","table","tbody","td","tfoot","th","thead","tr","ul"]);
+    const semanticTags = new Set(["a","abbr","b","bdi","bdo","cite","code","del","em","i","ins","kbd","mark","q","s","samp","small","strong","sub","sup","time","u","var"]);
+    const inlineWrapperTags = new Set([...semanticTags, "span", "font", "center"]);
+    const centerMarker = "data-sigil-centered";
+    const sectionTitleRe = /^\s*(?:\d+\s*[\/／、．.]|第\s*[0-9一二三四五六七八九十百千]+\s*[章节篇回])/;
+    const bookCss = `
+html { margin: 0; padding: 0; }
+body { display: block; margin: 0 5pt; padding: 0; color: #111; background: #fff; font-family: serif; font-size: 1em; line-height: 1.6; text-align: justify; }
+h1 { display: block; margin: .67em 0; font-size: 1.5em; font-weight: bold; line-height: 1.2; text-align: center; text-indent: 0; }
+h2.section-title, h3.section-title { display: block; margin: .83em 0; font-size: 1.375em; font-weight: bold; line-height: 1.2; text-align: center; text-indent: 0; break-after: avoid; }
+p { display: block; margin: 7px 0 0; line-height: 1.5; text-align: justify; text-indent: 2em; white-space: normal; overflow-wrap: break-word; }
+p.lead { font-style: italic; }
+p.image { margin: 7px 0 0; text-align: center; text-indent: 0; }
+div.spacer { display: block; height: 7px; margin: 0; }
+blockquote { margin: 7px 2em 0; text-align: justify; }
+ul, ol { margin: 7px 0 0 2em; }
+li { margin: 0; }
+pre { white-space: pre-wrap; }
+table { border-collapse: collapse; max-width: 100%; }
+img { max-width: 100%; height: auto; }
+a { color: inherit; }
+`;
     const state = { items: [], current: null, converting: false };
     function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
     function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
     function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
-    function safeStyle(value) { return !/url\s*\(\s*["']?\s*(?:javascript|vbscript):/i.test(value); }
-    function cleanArticle(article) { const clone = article.cloneNode(true), walker = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT), nodes = [clone]; while (walker.nextNode()) nodes.push(walker.currentNode); for (const node of nodes) { if (removeTags.has(node.tagName.toLowerCase())) { node.remove(); continue; } for (const attr of [...node.attributes]) { const name = attr.name.toLowerCase(); if (!allowed.has(name) || name.startsWith("on") || (name === "style" && !safeStyle(attr.value)) || ((name === "href" || name === "src") && !safeUrl(name, attr.value))) node.removeAttribute(attr.name); } } return clone; }
+    function normaliseText(value) { return (value || "").replace(/\u00a0/g, " ").replace(/[\t\r\n\f ]+/g, " "); }
+    function styleValue(node, property) { const style = node.getAttribute?.("style") || ""; const match = style.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "i")); return match ? match[1].trim().toLowerCase() : ""; }
+    function isHidden(node) { const style = node.getAttribute?.("style") || "", classes = (node.getAttribute?.("class") || "").toLowerCase().split(/\s+/); return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(style) || classes.includes("sf-hidden") || classes.includes("hidden") || node.getAttribute?.("aria-hidden") === "true"; }
+    function isCentered(node) { const value = styleValue(node, "text-align"); return node.getAttribute?.(centerMarker) === "1" || value === "center" || node.getAttribute?.("align")?.toLowerCase() === "center" || /(?:^|\s)(?:center|text-center)(?:\s|$)/i.test(node.getAttribute?.("class") || ""); }
+    function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
+    function hasBlockChild(node) { return [...node.children].some(isBlock); }
+    function textOf(node) { return normaliseText(node.textContent).trim(); }
+    function hasMeaningful(node) { return Boolean(textOf(node) || node.querySelector?.("img")); }
+    function onlyBreaks(node) {
+      if (!node) return false;
+      let found = false;
+      const visit = current => {
+        if (current.nodeType === Node.TEXT_NODE) return !normaliseText(current.nodeValue).trim();
+        if (current.nodeType !== Node.ELEMENT_NODE) return true;
+        for (const child of current.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            if (normaliseText(child.nodeValue).trim()) return false;
+            continue;
+          }
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          const tag = child.tagName.toLowerCase();
+          if (tag === "br") { found = true; continue; }
+          if (!inlineWrapperTags.has(tag) && !["ruby","rt","rp"].includes(tag)) return false;
+          if (!visit(child)) return false;
+        }
+        return true;
+      };
+      return visit(node) && found;
+    }
+    function isHeadingText(text) { return text.length > 0 && text.length <= 120 && sectionTitleRe.test(text); }
+    function isHeadingSource(node, text = textOf(node)) {
+      const tag = node.tagName?.toLowerCase() || "";
+      const centered = (tag === "p" || tag === "section") && node.getAttribute?.(centerMarker) && !hasBlockChild(node);
+      return ["h1","h2","h3","h4","h5","h6"].includes(tag) || isHeadingText(text) || Boolean(centered);
+    }
+    function cleanTree(root) {
+      if (isCentered(root)) root.setAttribute(centerMarker, "1");
+      for (const node of [...root.querySelectorAll("*")]) {
+        if (removeTags.has(node.tagName.toLowerCase()) || isHidden(node)) { node.remove(); continue; }
+        if (node.tagName.toLowerCase() === "wbr") { node.remove(); continue; }
+        if (isCentered(node)) node.setAttribute(centerMarker, "1");
+        const lazySrc = node.getAttribute("data-src") || node.getAttribute("data-original");
+        if (node.tagName.toLowerCase() === "img" && !node.getAttribute("src") && lazySrc) node.setAttribute("src", lazySrc);
+        for (const attr of [...node.attributes]) {
+          const name = attr.name.toLowerCase();
+          if (name === "target" || name.startsWith("on") || (name === "href" || name === "src") && !safeUrl(name, attr.value)) node.removeAttribute(attr.name);
+        }
+      }
+      // A malformed snapshot can put a block (section/div/p) inside a styled
+      // inline wrapper.  Unwrap only those containers so normaliseParagraph
+      // can split the block instead of flattening its heading into prose.
+      for (const node of [...root.querySelectorAll("span,font,center,a,abbr,b,bdi,bdo,cite,code,del,em,i,ins,kbd,mark,q,s,samp,small,strong,sub,sup,time,u,var")]) {
+        if ([...node.querySelectorAll("*")].every(child => !isBlock(child))) continue;
+        const parent = node.parentNode;
+        if (!parent) continue;
+        while (node.firstChild) parent.insertBefore(node.firstChild, node);
+        parent.removeChild(node);
+      }
+      return root;
+    }
+    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); return el; }
+    function appendTextContent(target, raw) {
+      const value = normaliseText(raw);
+      if (value && value.trim()) { target.append(document.createTextNode(value)); return; }
+      // Preserve a literal space between inline runs while ignoring the
+      // indentation/newlines inserted by SingleFile around elements.
+      if (raw && !/[\t\r\n\f]/.test(raw) && raw.replace(/\u00a0/g, "").trim() === "" && (target.lastChild || target.textContent.trim())) {
+        target.append(document.createTextNode(" "));
+      }
+    }
+    const unicodeLetterNumber = (() => { try { return new RegExp("[\\p{L}\\p{N}]", "u"); } catch { return /^[A-Za-z0-9]$/; } })();
+    const inlineObjectMarker = "\uFFFC";
+    const breakBoundaryTags = new Set(["audio","canvas","embed","figure","hr","iframe","img","object","table","video"]);
+    function isCjkChar(value) {
+      if (!value) return false;
+      const code = value.codePointAt(0);
+      return (code >= 0x3400 && code <= 0x4dbf) || (code >= 0x4e00 && code <= 0x9fff) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0x20000 && code <= 0x323af) || (code >= 0x3040 && code <= 0x30ff) || (code >= 0x31f0 && code <= 0x31ff) || (code >= 0xff66 && code <= 0xff9d) || (code >= 0x1100 && code <= 0x11ff) || (code >= 0x3130 && code <= 0x318f) || (code >= 0xac00 && code <= 0xd7ff);
+    }
+    function isWordChar(value) { return Boolean(value && !isCjkChar(value) && unicodeLetterNumber.test(value)); }
+    function lastVisibleChar(node) {
+      if (!node) return "";
+      if (node.nodeType === Node.TEXT_NODE) { const chars = [...(node.nodeValue || "")]; for (let index = chars.length - 1; index >= 0; index--) if (!/\s/u.test(chars[index])) return chars[index]; return ""; }
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return inlineObjectMarker;
+      for (let index = node.childNodes.length - 1; index >= 0; index--) { const value = lastVisibleChar(node.childNodes[index]); if (value) return value; }
+      return "";
+    }
+    function firstVisibleChar(node) {
+      if (!node) return "";
+      if (node.nodeType === Node.TEXT_NODE) { for (const char of [...(node.nodeValue || "")]) if (!/\s/u.test(char)) return char; return ""; }
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return inlineObjectMarker;
+      for (const child of node.childNodes) { const value = firstVisibleChar(child); if (value) return value; }
+      return "";
+    }
+    function previousVisibleChar(root, target) {
+      let current = target;
+      while (current && current !== root) {
+        for (let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) { const value = lastVisibleChar(sibling); if (value) return value; }
+        current = current.parentNode;
+      }
+      return "";
+    }
+    function nextVisibleChar(root, target) {
+      let current = target;
+      while (current && current !== root) {
+        for (let sibling = current.nextSibling; sibling; sibling = sibling.nextSibling) { const value = firstVisibleChar(sibling); if (value) return value; }
+        current = current.parentNode;
+      }
+      return "";
+    }
+    function edgeTextNode(node, direction) {
+      if (!node) return null;
+      if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ? node : null;
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return null;
+      const children = [...node.childNodes];
+      if (direction < 0) children.reverse();
+      for (const child of children) { const found = edgeTextNode(child, direction); if (found) return found; }
+      return null;
+    }
+    function adjacentTextNode(root, target, direction) {
+      let current = target;
+      while (current && current !== root) {
+        let sibling = direction < 0 ? current.previousSibling : current.nextSibling;
+        while (sibling) {
+          const found = edgeTextNode(sibling, direction);
+          if (found) return found;
+          sibling = direction < 0 ? sibling.previousSibling : sibling.nextSibling;
+        }
+        current = current.parentNode;
+      }
+      return null;
+    }
+    function flattenBreaks(node) {
+      for (const br of [...node.querySelectorAll("br")]) {
+        const before = previousVisibleChar(node, br), after = nextVisibleChar(node, br);
+        const cjkBoundary = isCjkChar(before) && isCjkChar(after);
+        const wordBoundary = isWordChar(before) && isWordChar(after);
+        const beforeText = adjacentTextNode(node, br, -1), afterText = adjacentTextNode(node, br, 1);
+        // A visual wrap between CJK characters joins directly; a wrap between
+        // two Latin/number runs needs one separator to remain readable.
+        if (cjkBoundary || wordBoundary) {
+          if (beforeText) beforeText.nodeValue = beforeText.nodeValue.replace(/\s+$/u, "");
+          if (afterText) afterText.nodeValue = afterText.nodeValue.replace(/^\s+/u, "");
+        }
+        if (wordBoundary) br.parentNode.insertBefore(document.createTextNode(" "), br);
+        br.remove();
+      }
+    }
+    function pruneEmptyInline(node) {
+      // Flattening a hard break can leave wrappers such as <b> </b>.  They
+      // carry no document meaning and make the generated XHTML needlessly
+      // noisy; preserve their whitespace as a separator and leave wrappers
+      // that still contain text or an image untouched.
+      for (const child of [...node.children]) {
+        pruneEmptyInline(child);
+        const tag = child.tagName.toLowerCase();
+        if (semanticTags.has(tag) && !textOf(child) && !child.querySelector("img")) {
+          // Unwrap instead of deleting so a flattened <br> can still act as
+          // the separator between the text runs on either side.
+          const parent = child.parentNode;
+          while (child.firstChild) parent.insertBefore(child.firstChild, child);
+          child.remove();
+        }
+      }
+    }
+    function appendInline(target, source) {
+      if (source.nodeType === Node.TEXT_NODE) { appendTextContent(target, source.nodeValue); return; }
+      if (source.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = source.tagName.toLowerCase();
+      if (tag === "br") { target.append(document.createElement("br")); return; }
+      if (tag === "wbr") return;
+      if (tag === "img") { const img = document.createElement("img"), src = source.getAttribute("src") || source.getAttribute("data-src"); if (src && safeUrl("src", src)) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
+      let outputTag = semanticTags.has(tag) ? tag : "";
+      if (!outputTag && tag === "span") { const weight = styleValue(source, "font-weight"), fontStyle = styleValue(source, "font-style"), decoration = styleValue(source, "text-decoration"); if (/bold|[6-9]00/.test(weight)) outputTag = "strong"; else if (/italic|oblique/.test(fontStyle)) outputTag = "em"; else if (/underline/.test(decoration)) outputTag = "u"; }
+      if (outputTag) {
+        const wrapper = makeSemantic(outputTag, source);
+        for (const child of source.childNodes) appendInline(wrapper, child);
+        const sourceText = source.textContent || "";
+        if (!wrapper.childNodes.length && source.childNodes.length && !/[\t\r\n\f]/.test(sourceText) && sourceText.replace(/\u00a0/g, "").trim() === "") wrapper.append(document.createTextNode(" "));
+        target.append(wrapper);
+        return;
+      }
+      for (const child of source.childNodes) appendInline(target, child);
+    }
+    function trimEdges(node) {
+      let first = node.firstChild; while (first && first.nodeType === Node.TEXT_NODE && !first.nodeValue.trim()) { node.removeChild(first); first = node.firstChild; } if (first?.nodeType === Node.TEXT_NODE) first.nodeValue = first.nodeValue.replace(/^\s+/, "");
+      let last = node.lastChild; while (last && last.nodeType === Node.TEXT_NODE && !last.nodeValue.trim()) { node.removeChild(last); last = node.lastChild; } if (last?.nodeType === Node.TEXT_NODE) last.nodeValue = last.nodeValue.replace(/\s+$/, "");
+    }
+    function makeSpacer() { const spacer = document.createElement("div"); spacer.className = "spacer"; spacer.textContent = "\u00a0"; return spacer; }
+    function finishParagraph(paragraph, source) {
+      if (onlyBreaks(paragraph)) return [makeSpacer()];
+      flattenBreaks(paragraph);
+      pruneEmptyInline(paragraph);
+      trimEdges(paragraph);
+      if (!hasMeaningful(paragraph)) return [];
+      if (isHeadingSource(source, textOf(paragraph))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of [...paragraph.childNodes]) heading.append(child); trimEdges(heading); return [heading]; }
+      paragraph.className = "body-text";
+      return [paragraph];
+    }
+    function normaliseParagraph(node) {
+      // An empty paragraph is not evidence of a line break.  SingleFile
+      // exports often leave empty shells around nested blocks; turning every
+      // shell into a spacer creates artificial vertical breaks in the XHTML.
+      if (!hasMeaningful(node) && !onlyBreaks(node)) return [];
+      const output = [];
+      let paragraph = document.createElement("p");
+      const flush = () => { output.push(...finishParagraph(paragraph, node)); paragraph = document.createElement("p"); };
+      for (const child of [...node.childNodes]) { if (isBlock(child)) { flush(); output.push(...normaliseBlock(child)); continue; } appendInline(paragraph, child); }
+      flush();
+      return output;
+    }
+    function normaliseContainer(node) {
+      const output = [];
+      let paragraph = document.createElement("p");
+      const flush = () => { output.push(...finishParagraph(paragraph, node)); paragraph = document.createElement("p"); };
+      for (const child of [...node.childNodes]) { if (isBlock(child)) { flush(); output.push(...normaliseBlock(child)); continue; } appendInline(paragraph, child); }
+      flush();
+      return output;
+    }
+    function normaliseBlock(node) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === "p") return normaliseParagraph(node);
+      if (tag === "section") { if (onlyBreaks(node)) return [makeSpacer()]; if (!hasBlockChild(node) && (isHeadingText(textOf(node)) || isCentered(node))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; } return normaliseContainer(node); }
+      if (["h1","h2","h3","h4","h5","h6"].includes(tag)) { const heading = document.createElement(tag === "h1" ? "h1" : "h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; }
+      if (tag === "img") { const paragraph = document.createElement("p"); paragraph.className = "image"; appendInline(paragraph, node); return [paragraph]; }
+      if (tag === "br" || tag === "wbr") return [makeSpacer()];
+      if (tag === "hr") { const hr = document.createElement("hr"); return [hr]; }
+      if (hasBlockChild(node)) return normaliseContainer(node);
+      if (!hasMeaningful(node)) return [];
+      const paragraph = document.createElement("p"); for (const child of node.childNodes) appendInline(paragraph, child); return finishParagraph(paragraph, node);
+    }
+    function normaliseArticle(article, title) {
+      const cleaned = cleanTree(article.cloneNode(true)), blocks = normaliseContainer(cleaned), compact = [];
+      for (const block of blocks) { if (block.classList?.contains("spacer") && compact.at(-1)?.classList?.contains("spacer")) continue; compact.push(block); }
+      for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { flattenBreaks(block); pruneEmptyInline(block); }
+      const hasVisibleTitle = compact.some(node => ["h1","h2"].includes(node.tagName?.toLowerCase()) && textOf(node) === title);
+      if (title && !hasVisibleTitle) { const heading = document.createElement("h1"); heading.textContent = title; compact.unshift(heading); }
+      let headingIndex = 0; for (const node of compact) if (node.tagName?.toLowerCase() === "h2") node.id = `section-${++headingIndex}`;
+      for (const node of compact) { node.removeAttribute(centerMarker); for (const marked of node.querySelectorAll(`[${centerMarker}]`)) marked.removeAttribute(centerMarker); }
+      const firstParagraph = compact.find(node => node.tagName?.toLowerCase() === "p"); if (firstParagraph && firstParagraph.querySelector("em, i")) firstParagraph.classList.add("lead");
+      const preview = document.createElement("div"); compact.forEach(node => preview.append(node.cloneNode(true)));
+      return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p").length };
+    }
+    function selectArticle(doc) {
+      const candidate = doc.querySelector("#js_content");
+      if (candidate && (candidate.children.length || textOf(candidate))) return candidate;
+      if (candidate?.parentElement) {
+        // A malformed snapshot can put <p> inside <h2 id="js_content" >.
+        // DOMParser closes the heading and leaves the real blocks after an
+        // empty placeholder; reassemble those following siblings.
+        const repaired = doc.createElement("div");
+        for (let sibling = candidate.nextElementSibling; sibling; sibling = sibling.nextElementSibling) repaired.append(sibling.cloneNode(true));
+        if (repaired.children.length) return repaired;
+      }
+      return candidate || doc.querySelector("article") || doc.querySelector("main") || doc.querySelector("[role='main']") || doc.body;
+    }
     function convertHtml(raw, fileName) {
-      const doc = new DOMParser().parseFromString(raw, "text/html"), article = doc.querySelector("#js_content, article, main, [role='main'], body"); if (!article) throw new Error("未找到可转换的正文区域");
-      const title = (doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", cleaned = cleanArticle(article);
-      const xml = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html", null), root = xml.documentElement; root.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-      const head = xml.createElementNS(root.namespaceURI, "head"), meta = xml.createElementNS(root.namespaceURI, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
-      const titleEl = xml.createElementNS(root.namespaceURI, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(root.namespaceURI, "style"); style.setAttribute("type", "text/css"); style.textContent = "body { margin: 0 auto; padding: 1em; max-width: 44em; line-height: 1.6; } img { max-width: 100%; height: auto; }"; head.append(style); root.append(head);
-      const body = xml.createElementNS(root.namespaceURI, "body"); if (cleaned.tagName.toLowerCase() === "body") [...cleaned.childNodes].forEach(child => body.append(xml.importNode(child, true))); else body.append(xml.importNode(cleaned, true)); root.append(body); const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
-      const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查"); const base = fileName.replace(/\.[^.]+$/, ""); return { output, title, paragraphs: cleaned.querySelectorAll("p").length, name: `${base}-Sigil.xhtml`, preview: cleaned };
+      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc); if (!article) throw new Error("未找到可转换的正文区域");
+      const title = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article", normalised = normaliseArticle(article, title);
+      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
+      const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
+      const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
+      const body = xml.createElementNS(ns, "body"); for (const block of normalised.blocks) body.append(xml.importNode(block, true)); root.append(body);
+      // Guard the contract of the reflow converter: prose must not retain
+      // hard line-break elements or source layout dimensions.  Image sizes
+      // remain allowed because the stylesheet caps them at the page width.
+      const hardBreak = [...body.querySelectorAll("br")].find(element => !element.closest("pre"));
+      if (hardBreak) throw new Error("正文仍包含硬换行，未生成文件");
+      for (const element of body.querySelectorAll("[style],[width],[height]")) {
+        const tag = element.tagName.toLowerCase();
+        if (element.hasAttribute("style") || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
+          throw new Error("正文仍包含网页布局属性，未生成文件");
+        }
+      }
+      const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
+      const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
+      const base = fileName.replace(/\.[^.]+$/, ""); return { output, title, paragraphs: normalised.paragraphs, name: `${base}-Sigil.xhtml`, preview: normalised.preview };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
