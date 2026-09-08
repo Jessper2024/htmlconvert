@@ -425,6 +425,15 @@ a { color: inherit; }
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
       const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, normalised = normaliseArticle(article, title, metadata);
+      if (processType === "notion") {
+        const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
+        normalised.blocks = normalised.blocks.flatMap(block => {
+          const blockText = textOf(block), tag = block.tagName?.toLowerCase();
+          if (["h1", "h2"].includes(tag) && blockText === baseTitle) return [];
+          if (["h1", "h2"].includes(tag) && dateLabels.has(blockText)) { const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph]; }
+          return [block];
+        });
+      }
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
