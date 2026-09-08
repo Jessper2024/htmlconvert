@@ -131,6 +131,26 @@ a { color: inherit; }
     function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
     function hasBlockChild(node) { return [...node.children].some(isBlock); }
     function textOf(node) { return normaliseText(node?.textContent || "").trim(); }
+    const notionTitleSuffixRe = /(?:\s*[_|｜＿]\s*Notion)+\s*$/i;
+    function cleanTitle(value) { return normaliseText(value).trim().replace(notionTitleSuffixRe, "").trim(); }
+    function cleanArticleTitleHeadings(article, baseTitle) {
+      const headings = [...article.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+      if (/^H[1-6]$/.test(article.tagName)) headings.unshift(article);
+      for (const heading of headings) {
+        if (cleanTitle(textOf(heading)) !== baseTitle) continue;
+        const walker = heading.ownerDocument.createTreeWalker(heading, NodeFilter.SHOW_TEXT), nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        const value = nodes.map(node => node.nodeValue).join(""), match = value.match(notionTitleSuffixRe);
+        if (!match) continue;
+        let remaining = value.length - match.index;
+        for (const node of nodes.reverse()) {
+          const cut = Math.min(remaining, node.nodeValue.length);
+          if (cut) node.nodeValue = node.nodeValue.slice(0, -cut);
+          remaining -= cut;
+          if (!remaining) break;
+        }
+      }
+    }
     function extractArticleMeta(doc) {
       const values = [], ids = ["copyright_logo","js_author_name_text","js_author_name","js_name","publish_time","js_ip_wording"];
       for (const id of ids) { const value = textOf(doc.getElementById(id)); if (value && !values.includes(value)) values.push(value); }
@@ -486,31 +506,43 @@ a { color: inherit; }
     }
     function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
-      const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const rawTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const baseTitle = cleanTitle(rawTitle) || "Article";
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
       const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
+      cleanArticleTitleHeadings(articleForNormalise, baseTitle);
       if (preserveColors) markColorAnnotations(articleForNormalise);
       const normalised = normaliseArticle(articleForNormalise, title, metadata);
       if (processType === "notion") {
         const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
-        normalised.blocks = normalised.blocks.flatMap(block => {
+        normalised.blocks = normalised.blocks.flatMap((block, index) => {
           const blockText = textOf(block), tag = block.tagName?.toLowerCase();
           // Notion/SingleFile exports are inconsistent: the page title and
           // property date may arrive as h1/h2, p, or a layout div after
           // normalisation.  Match the exact block text rather than relying
           // on the source tag so the duplicate title can never survive.
-          if (blockText === baseTitle) return [];
+          // Keep the final title even when the source has no publish date.
+          if (index === 0 && tag === "h1" && blockText === title) return [block];
+          if ([rawTitle, baseTitle].includes(blockText) && !block.querySelector("img")) return [];
           if (dateLabels.has(blockText)) {
             if (tag === "p") { block.className = "body-text"; return [block]; }
             const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph];
           }
           return [block];
         });
+        // A dateless page can supply its title as h2 or after other blocks.
+        // Restore the final title if duplicate removal also removed that copy.
+        if (!normalised.blocks.some(block => /^H[12]$/.test(block.tagName) && textOf(block) === title)) {
+          const heading = document.createElement("h1"); heading.textContent = title; normalised.blocks.unshift(heading);
+        }
       }
-      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
+      // Preview and paragraph counts must reflect the final filtered blocks.
+      normalised.preview.replaceChildren(...normalised.blocks.map(block => block.cloneNode(true)));
+      normalised.paragraphs = normalised.blocks.filter(block => block.tagName?.toLowerCase() === "p" && !block.classList.contains("article-meta")).length;
+      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
       const body = xml.createElementNS(ns, "body"); for (const block of normalised.blocks) body.append(xml.importNode(block, true)); root.append(body);
