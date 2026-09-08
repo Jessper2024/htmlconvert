@@ -157,10 +157,17 @@ a { color: inherit; }
         const cells = [...row.querySelectorAll('[role="cell"]')];
         if (cells.length >= 2 && textOf(cells[0]) === label) return textOf(cells[1]);
       }
+      // Some SingleFile captures lose ARIA roles but retain the two-column
+      // property table.  Restrict the fallback to that table so article text
+      // containing words such as “作者” is never mistaken for metadata.
+      for (const row of doc.querySelectorAll('[role="table"] > div, [role="table"] [role="row"]')) {
+        const cells = [...row.querySelectorAll('[role="cell"]')];
+        if (cells.length >= 2 && textOf(cells[0]) === label) return textOf(cells[1]);
+      }
       return "";
     }
     function notionDate(value) {
-      const match = (value || "").match(/(\d{4})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})/);
+      const match = (value || "").match(/(\d{4})\s*[年/-]\s*(\d{1,2})\s*[月/-]\s*(\d{1,2})\s*日?/);
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
     function safeFileStem(value) {
@@ -404,7 +411,17 @@ a { color: inherit; }
       const preview = document.createElement("div"); compact.forEach(node => preview.append(node.cloneNode(true)));
       return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p" && !node.classList.contains("article-meta")).length };
     }
-    function selectArticle(doc) {
+    function selectArticle(doc, processType = "wechat") {
+      if (processType === "notion") {
+        const notionContent = doc.querySelector('.notion-page-content');
+        if (notionContent && (notionContent.children.length || textOf(notionContent))) return notionContent;
+        const notionBlocks = [...doc.querySelectorAll('.notion-text-block, .notion-header-block, .notion-image-block, .notion-bulleted_list-block, .notion-numbered_list-block, .notion-quote-block, .notion-callout-block, .notion-code-block')];
+        if (notionBlocks.length) {
+          const container = document.createElement('div');
+          for (const block of notionBlocks) if (!notionBlocks.some(parent => parent !== block && parent.contains(block))) container.append(block.cloneNode(true));
+          if (container.children.length) return container;
+        }
+      }
       const candidate = doc.querySelector("#js_content");
       if (candidate && (candidate.children.length || textOf(candidate))) return candidate;
       if (candidate?.parentElement) {
@@ -418,7 +435,7 @@ a { color: inherit; }
       return candidate || doc.querySelector("article") || doc.querySelector("main") || doc.querySelector("[role='main']") || doc.body;
     }
     function convertHtml(raw, fileName, processType = state.processType) {
-      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc); if (!article) throw new Error("未找到可转换的正文区域");
+      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
