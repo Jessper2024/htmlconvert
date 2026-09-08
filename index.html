@@ -143,6 +143,9 @@ a { color: inherit; }
       const metaAuthor = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim();
       return metaAuthor || "";
     }
+    function extractAccountName(doc) {
+      return textOf(doc.getElementById("js_name"));
+    }
     function safeFileStem(value) {
       return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
     }
@@ -402,7 +405,7 @@ a { color: inherit; }
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const publishDate = extractPublishDate(doc);
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = extractArticleMeta(doc), author = extractAuthor(doc), normalised = normaliseArticle(article, title, metadata);
+      const metadata = extractArticleMeta(doc), account = extractAccountName(doc), author = extractAuthor(doc), normalised = normaliseArticle(article, title, metadata);
       const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
@@ -420,7 +423,7 @@ a { color: inherit; }
       }
       const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
-      const filenameParts = [publishDate, author, baseTitle].filter(Boolean);
+      const filenameParts = [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
       return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview };
     }
