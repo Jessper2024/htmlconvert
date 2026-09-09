@@ -139,10 +139,11 @@ a { color: inherit; }
       return srcset || "";
     }
     async function fetchImageBlob(source) {
-      const candidates = [source, `https://images.weserv.nl/?url=${encodeURIComponent(source)}`];
+      const encoded = encodeURIComponent(source);
+      const candidates = [source, `https://images.weserv.nl/?url=${encoded}`, `https://wsrv.nl/?url=${encoded}`, `https://api.allorigins.win/raw?url=${encoded}`, `https://corsproxy.io/?url=${encoded}`];
       for (const url of candidates) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), 8000);
         try {
           const response = await fetch(url, { mode: "cors", credentials: "omit", signal: controller.signal });
           if (!response.ok) continue;
