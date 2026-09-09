@@ -124,6 +124,20 @@ a { color: inherit; }
     function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
     function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
     function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
+    function normaliseImageUrl(value) {
+      const raw = (value || "").trim();
+      try {
+        if (/^\/?image\//i.test(raw)) return decodeURIComponent(raw.replace(/^\/?image\//i, "").split("?")[0]);
+        if (/^\/_next\/image\?/i.test(raw)) { const encoded = new URLSearchParams(raw.split("?", 2)[1]).get("url"); if (encoded) return decodeURIComponent(encoded); }
+      } catch (_) { return raw; }
+      return raw;
+    }
+    function imageSource(node) {
+      const candidates = ["src", "data-src", "data-original", "data-original-src", "data-lazy-src", "data-url"];
+      for (const name of candidates) { const value = normaliseImageUrl(node.getAttribute(name)); if (value && value !== "about:blank" && safeUrl("src", value)) return value; }
+      const srcset = (node.getAttribute("srcset") || node.getAttribute("data-srcset") || "").split(",").map(part => normaliseImageUrl(part.trim().split(/\s+/)[0])).find(value => value && safeUrl("src", value));
+      return srcset || "";
+    }
     function normaliseText(value) { return (value || "").replace(/\u00a0/g, " ").replace(/[\t\r\n\f ]+/g, " "); }
     function styleValue(node, property) { const style = node.getAttribute?.("style") || ""; const match = style.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "i")); return match ? match[1].trim().toLowerCase() : ""; }
     function isHidden(node) { const style = node.getAttribute?.("style") || "", classes = (node.getAttribute?.("class") || "").toLowerCase().split(/\s+/); return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(style) || classes.includes("sf-hidden") || classes.includes("hidden") || node.getAttribute?.("aria-hidden") === "true"; }
@@ -251,11 +265,11 @@ a { color: inherit; }
     function cleanTree(root) {
       if (isCentered(root)) root.setAttribute(centerMarker, "1");
       for (const node of [...root.querySelectorAll("*")]) {
-        if (removeTags.has(node.tagName.toLowerCase()) || isHidden(node)) { node.remove(); continue; }
+        const tag = node.tagName.toLowerCase();
+        if (removeTags.has(tag) || (isHidden(node) && !(tag === "img" && imageSource(node)))) { node.remove(); continue; }
         if (node.tagName.toLowerCase() === "wbr") { node.remove(); continue; }
         if (isCentered(node)) node.setAttribute(centerMarker, "1");
-        const lazySrc = node.getAttribute("data-src") || node.getAttribute("data-original");
-        if (node.tagName.toLowerCase() === "img" && !node.getAttribute("src") && lazySrc) node.setAttribute("src", lazySrc);
+        if (node.tagName.toLowerCase() === "img") { const source = imageSource(node); if (source) node.setAttribute("src", source); }
         for (const attr of [...node.attributes]) {
           const name = attr.name.toLowerCase();
           if (name === "target" || name.startsWith("on") || (name === "href" || name === "src") && !safeUrl(name, attr.value)) node.removeAttribute(attr.name);
@@ -384,7 +398,7 @@ a { color: inherit; }
       const tag = source.tagName.toLowerCase();
       if (tag === "br") { target.append(document.createElement("br")); return; }
       if (tag === "wbr") return;
-      if (tag === "img") { const img = document.createElement("img"), src = source.getAttribute("src") || source.getAttribute("data-src") || source.getAttribute("data-original"); if (src && safeUrl("src", src)) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
+      if (tag === "img") { const img = document.createElement("img"), src = imageSource(source); if (src) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
       let outputTag = semanticTags.has(tag) ? tag : "";
       if (source.getAttribute("data-sigil-color")) outputTag = "span";
       if (!outputTag && tag === "span") { const weight = styleValue(source, "font-weight"), fontStyle = styleValue(source, "font-style"), decoration = styleValue(source, "text-decoration"); if (/bold|[6-9]00/.test(weight)) outputTag = "strong"; else if (/italic|oblique/.test(fontStyle)) outputTag = "em"; else if (/underline/.test(decoration)) outputTag = "u"; }
