@@ -184,6 +184,9 @@ a { color: inherit; }
       const match = (value || "").match(/(\d{4})\s*[年/\-.]\s*(\d{1,2})\s*[月/\-.]\s*(\d{1,2})\s*日?/);
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
+    function cleanNotionTitle(value) {
+      return normaliseText(value).trim().replace(/\s*_\s*Notion\s*$/i, "").trim();
+    }
     const notionColorMap = { "--c-redtexsec":"#d44c47", "--c-redtexpri":"#d44c47", "--c-blutexsec":"#337ea9", "--c-blutexpri":"#337ea9", "--c-gretexpri":"#448361", "--c-yeltexpri":"#cb912f" };
     function sourceColor(node) {
       const highlight = (node.getAttribute("data-notion-highlight") || "").toLowerCase();
@@ -486,7 +489,8 @@ a { color: inherit; }
     }
     function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
-      const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const rawBaseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const baseTitle = processType === "notion" ? cleanNotionTitle(rawBaseTitle) : rawBaseTitle;
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
