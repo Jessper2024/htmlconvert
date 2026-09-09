@@ -634,7 +634,9 @@ a { color: inherit; }
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
       const filenameParts = processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
-      const report = { ...imageReport(body), embedAttempted: imageEmbedding.attempted, embedFailed: imageEmbedding.failed };
+      // Classify images from the final XHTML tree, so the report always
+      // describes exactly what the downloaded file contains.
+      const report = { ...imageReport(check), embedAttempted: imageEmbedding.attempted, embedFailed: imageEmbedding.failed };
       if (report.external || report.missing) throw new Error(`图片未能全部内嵌（外链 ${report.external}，缺少地址 ${report.missing}）。请重新从 Notion 导出文件后立即转换，或使用本地工具包转换。`);
       return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors };
     }
