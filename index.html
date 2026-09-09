@@ -637,7 +637,6 @@ a { color: inherit; }
       // Classify images from the final XHTML tree, so the report always
       // describes exactly what the downloaded file contains.
       const report = { ...imageReport(check), embedAttempted: imageEmbedding.attempted, embedFailed: imageEmbedding.failed };
-      if (report.external || report.missing) throw new Error(`图片未能全部内嵌（外链 ${report.external}，缺少地址 ${report.missing}）。请重新从 Notion 导出文件后立即转换，或使用本地工具包转换。`);
       return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
