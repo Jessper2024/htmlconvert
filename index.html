@@ -153,14 +153,25 @@ a { color: inherit; }
       }
       throw new Error("图片源禁止跨域或无法访问");
     }
-    async function embedExternalImages(root) {
+    function imageFetchCandidates(image, baseHref) {
+      const source = imageSource(image), candidates = [];
+      const raw = (image.getAttribute("src") || "").trim();
+      if (/^attachment:/i.test(source) && baseHref && /^\/?image\//i.test(raw)) {
+        try { candidates.push(new URL(raw, baseHref).href); } catch (_) { /* keep fallback */ }
+      }
+      if (source) candidates.push(source);
+      return [...new Set(candidates)];
+    }
+    async function embedExternalImages(root, baseHref = "") {
       const result = { attempted: 0, embedded: 0, failed: 0 };
       for (const image of [...root.querySelectorAll("img")]) {
-        const source = imageSource(image);
-        if (!/^https?:\/\//i.test(source)) continue;
+        const candidates = imageFetchCandidates(image, baseHref).filter(source => /^https?:\/\//i.test(source));
+        if (!candidates.length) continue;
         result.attempted++;
         try {
-          const blob = await fetchImageBlob(source);
+          let blob;
+          for (const source of candidates) { try { blob = await fetchImageBlob(source); break; } catch (_) {} }
+          if (!blob) throw new Error("图片源禁止跨域或无法访问");
           const dataUrl = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
@@ -562,7 +573,7 @@ a { color: inherit; }
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
       const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
-      const imageEmbedding = await embedExternalImages(articleForNormalise);
+      const imageEmbedding = await embedExternalImages(articleForNormalise, doc.querySelector("base")?.href || "");
       cleanArticleTitleHeadings(articleForNormalise, baseTitle);
       if (preserveColors) markColorAnnotations(articleForNormalise);
       const normalised = normaliseArticle(articleForNormalise, title, metadata);
