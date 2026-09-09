@@ -138,12 +138,24 @@ a { color: inherit; }
       const srcset = (node.getAttribute("srcset") || node.getAttribute("data-srcset") || "").split(",").map(part => normaliseImageUrl(part.trim().split(/\s+/)[0])).find(value => value && safeUrl("src", value));
       return srcset || "";
     }
-    function absolutiseImageSources(root, baseHref) {
-      if (!baseHref) return;
+    function absolutiseImageSources(root, baseHref, fallbackBaseHref = "") {
+      if (!baseHref && !fallbackBaseHref) return;
       for (const image of [...root.querySelectorAll("img")]) {
         const raw = (image.getAttribute("src") || "").trim();
-        if (/^\/?image\//i.test(raw)) { try { image.setAttribute("src", new URL(raw, baseHref).href); } catch (_) {} }
+        if (/^\/?image\//i.test(raw)) {
+          try {
+            const base = /^\/?image\/attachment/i.test(raw) && fallbackBaseHref ? fallbackBaseHref : baseHref;
+            const resolved = new URL(raw, base);
+            if (base === fallbackBaseHref) resolved.searchParams.delete("userId");
+            image.setAttribute("src", resolved.href);
+          } catch (_) {}
+        }
       }
+    }
+    function notionPublicOrigin(doc) {
+      const text = doc.body?.textContent || "";
+      const match = text.match(/\b([a-z0-9-]+\.notion\.site)\b/i);
+      return match ? `https://${match[1]}` : "";
     }
     async function fetchImageBlob(source) {
       const encoded = encodeURIComponent(source);
@@ -161,19 +173,31 @@ a { color: inherit; }
       }
       throw new Error("图片源禁止跨域或无法访问");
     }
-    function imageFetchCandidates(image, baseHref) {
+    function imageFetchCandidates(image, baseHref, publicBaseHref = "") {
       const source = imageSource(image), candidates = [];
       const raw = (image.getAttribute("src") || "").trim();
       if (/^attachment:/i.test(source) && baseHref && /^\/?image\//i.test(raw)) {
         try { candidates.push(new URL(raw, baseHref).href); } catch (_) { /* keep fallback */ }
       }
+      // SingleFile captures of a public Notion page often retain app.notion.com
+      // as the base URL even though the attachment is downloadable from the
+      // public *.notion.site origin shown in the page chrome.  Try that origin
+      // before falling back to a bare external attachment URL.
+      if (publicBaseHref && /^\/?image\//i.test(raw)) {
+        try {
+          const publicUrl = new URL(raw, publicBaseHref);
+          // Public Notion pages do not need the private app session identifier.
+          publicUrl.searchParams.delete("userId");
+          candidates.push(publicUrl.href);
+        } catch (_) { /* keep fallback */ }
+      }
       if (source) candidates.push(source);
       return [...new Set(candidates)];
     }
-    async function embedExternalImages(root, baseHref = "") {
+    async function embedExternalImages(root, baseHref = "", publicBaseHref = "") {
       const result = { attempted: 0, embedded: 0, failed: 0 };
       for (const image of [...root.querySelectorAll("img")]) {
-        const candidates = imageFetchCandidates(image, baseHref).filter(source => /^https?:\/\//i.test(source));
+        const candidates = imageFetchCandidates(image, baseHref, publicBaseHref).filter(source => /^https?:\/\//i.test(source));
         if (!candidates.length) continue;
         result.attempted++;
         try {
@@ -573,7 +597,12 @@ a { color: inherit; }
       return report;
     }
     async function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
-      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
+      const doc = new DOMParser().parseFromString(raw, "text/html");
+      // A Notion snapshot is easy to upload while the default WeChat mode is
+      // still selected.  Its dedicated page-content marker is unambiguous, so
+      // recover automatically instead of converting the whole Notion chrome.
+      if (processType === "wechat" && doc.querySelector(".notion-page-content")) processType = "notion";
+      const article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
       const rawTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const baseTitle = cleanTitle(rawTitle) || "Article";
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
@@ -581,9 +610,9 @@ a { color: inherit; }
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
       const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
-      const imageEmbedding = await embedExternalImages(articleForNormalise, doc.querySelector("base")?.href || "");
+      const imageEmbedding = await embedExternalImages(articleForNormalise, doc.querySelector("base")?.href || "", notionPublicOrigin(doc));
       const baseHref = doc.querySelector("base")?.href || "";
-      absolutiseImageSources(articleForNormalise, baseHref);
+      absolutiseImageSources(articleForNormalise, baseHref, notionPublicOrigin(doc));
       cleanArticleTitleHeadings(articleForNormalise, baseTitle);
       if (preserveColors) markColorAnnotations(articleForNormalise);
       const normalised = normaliseArticle(articleForNormalise, title, metadata);
@@ -643,7 +672,7 @@ a { color: inherit; }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
     function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
     function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || "未识别"}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.missing || !item.output.author || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
-    async function convertAll() { state.converting = true; renderQueue(); let success = 0, index = 0; for (const item of state.items) { index++; if (item.output) { success++; continue; } item.status = "转换中"; item.error = ""; renderQueue(); try { setStatus(`第 1/2 步：正在解析第 ${index}/${state.items.length} 个文件的正文和图片地址。`); const raw = await item.file.text(); setStatus(`第 2/2 步：正在下载并内嵌第 ${index}/${state.items.length} 个文件的图片。`); item.output = await convertHtml(raw, item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查，图片已全部内嵌。`, failed ? "error" : "ok"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0, index = 0; for (const item of state.items) { index++; if (item.output) { success++; continue; } item.status = "转换中"; item.error = ""; renderQueue(); try { setStatus(`第 1/2 步：正在解析第 ${index}/${state.items.length} 个文件的正文和图片地址。`); const raw = await item.file.text(); setStatus(`第 2/2 步：正在下载并内嵌第 ${index}/${state.items.length} 个文件的图片。`); item.output = await convertHtml(raw, item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查，图片按源文件保留并尽量内嵌。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
     $("processType").addEventListener("change", event => { state.processType = event.target.value; $("modeHint").textContent = state.processType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。"; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件"); });
     $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
