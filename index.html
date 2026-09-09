@@ -25,8 +25,6 @@
     .mode-control label { color:var(--ink); font-size:13px; font-weight:700; }
     .mode-control select { min-width:190px; padding:8px 30px 8px 10px; border:1px solid #b7c9ce; border-radius:6px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
     .mode-control select:focus { outline:2px solid rgba(20,125,114,.2); border-color:var(--accent); }
-    .color-option { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; cursor:pointer; }
-    .color-option input { width:15px; height:15px; accent-color:var(--accent); }
     .mode-hint { color:var(--muted); font-size:12px; }
     button { border:0; border-radius:6px; padding:10px 15px; color:#fff; background:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
     button:hover:not(:disabled) { background:var(--accent-dark); }
@@ -80,7 +78,7 @@
   <main>
     <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
     <section class="panel import-panel">
-      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option></select><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
+      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option></select><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
       <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
@@ -120,102 +118,10 @@ table { border-collapse: collapse; max-width: 100%; }
 img { max-width: 100%; height: auto; }
 a { color: inherit; }
 `;
-    const state = { items: [], current: null, converting: false, processType: "wechat", preserveColors: false };
+    const state = { items: [], current: null, converting: false, processType: "wechat" };
     function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
     function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
     function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
-    function normaliseImageUrl(value) {
-      const raw = (value || "").trim();
-      try {
-        if (/^\/?image\//i.test(raw)) return decodeURIComponent(raw.replace(/^\/?image\//i, "").split("?")[0]);
-        if (/^\/_next\/image\?/i.test(raw)) { const encoded = new URLSearchParams(raw.split("?", 2)[1]).get("url"); if (encoded) return decodeURIComponent(encoded); }
-      } catch (_) { return raw; }
-      return raw;
-    }
-    function imageSource(node) {
-      const candidates = ["src", "data-src", "data-original", "data-original-src", "data-lazy-src", "data-url"];
-      for (const name of candidates) { const raw = (node.getAttribute(name) || "").trim(), value = normaliseImageUrl(raw); if (value && value !== "about:blank" && safeUrl("src", value)) return /^attachment:/i.test(value) ? raw : value; }
-      const srcset = (node.getAttribute("srcset") || node.getAttribute("data-srcset") || "").split(",").map(part => normaliseImageUrl(part.trim().split(/\s+/)[0])).find(value => value && safeUrl("src", value));
-      return srcset || "";
-    }
-    function absolutiseImageSources(root, baseHref, fallbackBaseHref = "") {
-      if (!baseHref && !fallbackBaseHref) return;
-      for (const image of [...root.querySelectorAll("img")]) {
-        const raw = (image.getAttribute("src") || "").trim();
-        if (/^\/?image\//i.test(raw)) {
-          try {
-            const base = /^\/?image\/attachment/i.test(raw) && fallbackBaseHref ? fallbackBaseHref : baseHref;
-            const resolved = new URL(raw, base);
-            if (base === fallbackBaseHref) resolved.searchParams.delete("userId");
-            image.setAttribute("src", resolved.href);
-          } catch (_) {}
-        }
-      }
-    }
-    function notionPublicOrigin(doc) {
-      const text = doc.body?.textContent || "";
-      const match = text.match(/\b([a-z0-9-]+\.notion\.site)\b/i);
-      return match ? `https://${match[1]}` : "";
-    }
-    async function fetchImageBlob(source) {
-      const encoded = encodeURIComponent(source);
-      const candidates = [source, `https://images.weserv.nl/?url=${encoded}`, `https://wsrv.nl/?url=${encoded}`, `https://api.allorigins.win/raw?url=${encoded}`, `https://corsproxy.io/?url=${encoded}`];
-      for (const url of candidates) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        try {
-          const response = await fetch(url, { mode: "cors", credentials: "omit", signal: controller.signal });
-          if (!response.ok) continue;
-          const blob = await response.blob();
-          if (blob.type.toLowerCase().startsWith("image/") && blob.size) return blob;
-        } catch (_) { /* Try the image proxy after a source CORS failure. */ }
-        finally { clearTimeout(timeout); }
-      }
-      throw new Error("图片源禁止跨域或无法访问");
-    }
-    function imageFetchCandidates(image, baseHref, publicBaseHref = "") {
-      const source = imageSource(image), candidates = [];
-      const raw = (image.getAttribute("src") || "").trim();
-      if (/^attachment:/i.test(source) && baseHref && /^\/?image\//i.test(raw)) {
-        try { candidates.push(new URL(raw, baseHref).href); } catch (_) { /* keep fallback */ }
-      }
-      // SingleFile captures of a public Notion page often retain app.notion.com
-      // as the base URL even though the attachment is downloadable from the
-      // public *.notion.site origin shown in the page chrome.  Try that origin
-      // before falling back to a bare external attachment URL.
-      if (publicBaseHref && /^\/?image\//i.test(raw)) {
-        try {
-          const publicUrl = new URL(raw, publicBaseHref);
-          // Public Notion pages do not need the private app session identifier.
-          publicUrl.searchParams.delete("userId");
-          candidates.push(publicUrl.href);
-        } catch (_) { /* keep fallback */ }
-      }
-      if (source) candidates.push(source);
-      return [...new Set(candidates)];
-    }
-    async function embedExternalImages(root, baseHref = "", publicBaseHref = "") {
-      const result = { attempted: 0, embedded: 0, failed: 0 };
-      for (const image of [...root.querySelectorAll("img")]) {
-        const candidates = imageFetchCandidates(image, baseHref, publicBaseHref).filter(source => /^https?:\/\//i.test(source));
-        if (!candidates.length) continue;
-        result.attempted++;
-        try {
-          let blob;
-          for (const source of candidates) { try { blob = await fetchImageBlob(source); break; } catch (_) {} }
-          if (!blob) throw new Error("图片源禁止跨域或无法访问");
-          const dataUrl = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
-            reader.readAsDataURL(blob);
-          });
-          image.setAttribute("src", dataUrl);
-          result.embedded++;
-        } catch (_) { result.failed++; }
-      }
-      return result;
-    }
     function normaliseText(value) { return (value || "").replace(/\u00a0/g, " ").replace(/[\t\r\n\f ]+/g, " "); }
     function styleValue(node, property) { const style = node.getAttribute?.("style") || ""; const match = style.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "i")); return match ? match[1].trim().toLowerCase() : ""; }
     function isHidden(node) { const style = node.getAttribute?.("style") || "", classes = (node.getAttribute?.("class") || "").toLowerCase().split(/\s+/); return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(style) || classes.includes("sf-hidden") || classes.includes("hidden") || node.getAttribute?.("aria-hidden") === "true"; }
@@ -223,26 +129,6 @@ a { color: inherit; }
     function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
     function hasBlockChild(node) { return [...node.children].some(isBlock); }
     function textOf(node) { return normaliseText(node?.textContent || "").trim(); }
-    const notionTitleSuffixRe = /(?:\s*[_|｜＿]\s*Notion)+\s*$/i;
-    function cleanTitle(value) { return normaliseText(value).trim().replace(notionTitleSuffixRe, "").trim(); }
-    function cleanArticleTitleHeadings(article, baseTitle) {
-      const headings = [...article.querySelectorAll("h1,h2,h3,h4,h5,h6")];
-      if (/^H[1-6]$/.test(article.tagName)) headings.unshift(article);
-      for (const heading of headings) {
-        if (cleanTitle(textOf(heading)) !== baseTitle) continue;
-        const walker = heading.ownerDocument.createTreeWalker(heading, NodeFilter.SHOW_TEXT), nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        const value = nodes.map(node => node.nodeValue).join(""), match = value.match(notionTitleSuffixRe);
-        if (!match) continue;
-        let remaining = value.length - match.index;
-        for (const node of nodes.reverse()) {
-          const cut = Math.min(remaining, node.nodeValue.length);
-          if (cut) node.nodeValue = node.nodeValue.slice(0, -cut);
-          remaining -= cut;
-          if (!remaining) break;
-        }
-      }
-    }
     function extractArticleMeta(doc) {
       const values = [], ids = ["copyright_logo","js_author_name_text","js_author_name","js_name","publish_time","js_ip_wording"];
       for (const id of ids) { const value = textOf(doc.getElementById(id)); if (value && !values.includes(value)) values.push(value); }
@@ -296,17 +182,6 @@ a { color: inherit; }
       const match = (value || "").match(/(\d{4})\s*[年/\-.]\s*(\d{1,2})\s*[月/\-.]\s*(\d{1,2})\s*日?/);
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
-    const notionColorMap = { "--c-redtexsec":"#d44c47", "--c-redtexpri":"#d44c47", "--c-blutexsec":"#337ea9", "--c-blutexpri":"#337ea9", "--c-gretexpri":"#448361", "--c-yeltexpri":"#cb912f" };
-    function sourceColor(node) {
-      const highlight = (node.getAttribute("data-notion-highlight") || "").toLowerCase();
-      const highlightMap = { red:"#d44c47", blue:"#337ea9", green:"#448361", yellow:"#cb912f", orange:"#d9730d", pink:"#c14c8a", purple:"#9065b0" };
-      if (highlightMap[highlight]) return highlightMap[highlight];
-      let value = node.getAttribute("color") || styleValue(node, "color");
-      if (value.startsWith("var(")) { const variable = value.match(/--[a-z0-9_-]+/i); value = variable ? (notionColorMap[variable[0].toLowerCase()] || "") : ""; }
-      if (!value || /^(inherit|currentcolor|transparent|initial|unset)$/i.test(value)) return "";
-      return /^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z]{3,20})$/i.test(value) ? value : "";
-    }
-    function markColorAnnotations(root) { for (const node of [root, ...root.querySelectorAll("*")]) { const color = sourceColor(node); if (color) node.setAttribute("data-sigil-color", color); } }
     function safeFileStem(value) {
       return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
     }
@@ -343,11 +218,11 @@ a { color: inherit; }
     function cleanTree(root) {
       if (isCentered(root)) root.setAttribute(centerMarker, "1");
       for (const node of [...root.querySelectorAll("*")]) {
-        const tag = node.tagName.toLowerCase();
-        if (removeTags.has(tag) || (isHidden(node) && !(tag === "img" && imageSource(node)))) { node.remove(); continue; }
+        if (removeTags.has(node.tagName.toLowerCase()) || isHidden(node)) { node.remove(); continue; }
         if (node.tagName.toLowerCase() === "wbr") { node.remove(); continue; }
         if (isCentered(node)) node.setAttribute(centerMarker, "1");
-        if (node.tagName.toLowerCase() === "img") { const source = imageSource(node); if (source) node.setAttribute("src", source); }
+        const lazySrc = node.getAttribute("data-src") || node.getAttribute("data-original");
+        if (node.tagName.toLowerCase() === "img" && !node.getAttribute("src") && lazySrc) node.setAttribute("src", lazySrc);
         for (const attr of [...node.attributes]) {
           const name = attr.name.toLowerCase();
           if (name === "target" || name.startsWith("on") || (name === "href" || name === "src") && !safeUrl(name, attr.value)) node.removeAttribute(attr.name);
@@ -358,7 +233,6 @@ a { color: inherit; }
       // can split the block instead of flattening its heading into prose.
       for (const node of [...root.querySelectorAll("span,font,center,a,abbr,b,bdi,bdo,cite,code,del,em,i,ins,kbd,mark,q,s,samp,small,strong,sub,sup,time,u,var")]) {
         if ([...node.querySelectorAll("*")].every(child => !isBlock(child))) continue;
-        if (node.hasAttribute("data-sigil-color")) continue;
         const parent = node.parentNode;
         if (!parent) continue;
         while (node.firstChild) parent.insertBefore(node.firstChild, node);
@@ -366,7 +240,7 @@ a { color: inherit; }
       }
       return root;
     }
-    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); if (source?.getAttribute("data-sigil-color")) el.setAttribute("style", `color:${source.getAttribute("data-sigil-color")}`); return el; }
+    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); return el; }
     function appendTextContent(target, raw) {
       const value = normaliseText(raw);
       if (value && value.trim()) { target.append(document.createTextNode(value)); return; }
@@ -476,9 +350,8 @@ a { color: inherit; }
       const tag = source.tagName.toLowerCase();
       if (tag === "br") { target.append(document.createElement("br")); return; }
       if (tag === "wbr") return;
-      if (tag === "img") { const img = document.createElement("img"), src = imageSource(source); if (src) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
+      if (tag === "img") { const img = document.createElement("img"), src = source.getAttribute("src") || source.getAttribute("data-src") || source.getAttribute("data-original"); if (src && safeUrl("src", src)) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
       let outputTag = semanticTags.has(tag) ? tag : "";
-      if (source.getAttribute("data-sigil-color")) outputTag = "span";
       if (!outputTag && tag === "span") { const weight = styleValue(source, "font-weight"), fontStyle = styleValue(source, "font-style"), decoration = styleValue(source, "text-decoration"); if (/bold|[6-9]00/.test(weight)) outputTag = "strong"; else if (/italic|oblique/.test(fontStyle)) outputTag = "em"; else if (/underline/.test(decoration)) outputTag = "u"; }
       if (outputTag) {
         const wrapper = makeSemantic(outputTag, source);
@@ -581,9 +454,6 @@ a { color: inherit; }
         });
         if (rowLabels.some(label => propertyLabels.has(label))) table.remove();
       }
-      const chromeRe = /^(?:其他\s*\d+\s*个属性|更多属性|\d+\s*more\s*properties|关联|添加\s*标签|add\s*标签)$/i;
-      for (const node of [...root.querySelectorAll('.notion-page-block')]) if (chromeRe.test(textOf(node))) node.remove();
-      for (const node of [...root.querySelectorAll('.notion-topbar,.notion-sidebar')]) node.remove();
       return root;
     }
     function imageReport(root) {
@@ -596,53 +466,31 @@ a { color: inherit; }
       }
       return report;
     }
-    async function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
-      const doc = new DOMParser().parseFromString(raw, "text/html");
-      // A Notion snapshot is easy to upload while the default WeChat mode is
-      // still selected.  Its dedicated page-content marker is unambiguous, so
-      // recover automatically instead of converting the whole Notion chrome.
-      if (processType === "wechat" && doc.querySelector(".notion-page-content")) processType = "notion";
-      const article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
-      const rawTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
-      const baseTitle = cleanTitle(rawTitle) || "Article";
+    function convertHtml(raw, fileName, processType = state.processType) {
+      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
+      const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
-      const imageEmbedding = await embedExternalImages(articleForNormalise, doc.querySelector("base")?.href || "", notionPublicOrigin(doc));
-      const baseHref = doc.querySelector("base")?.href || "";
-      absolutiseImageSources(articleForNormalise, baseHref, notionPublicOrigin(doc));
-      cleanArticleTitleHeadings(articleForNormalise, baseTitle);
-      if (preserveColors) markColorAnnotations(articleForNormalise);
-      const normalised = normaliseArticle(articleForNormalise, title, metadata);
+      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article, normalised = normaliseArticle(articleForNormalise, title, metadata);
       if (processType === "notion") {
         const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
-        normalised.blocks = normalised.blocks.flatMap((block, index) => {
+        normalised.blocks = normalised.blocks.flatMap(block => {
           const blockText = textOf(block), tag = block.tagName?.toLowerCase();
           // Notion/SingleFile exports are inconsistent: the page title and
           // property date may arrive as h1/h2, p, or a layout div after
           // normalisation.  Match the exact block text rather than relying
           // on the source tag so the duplicate title can never survive.
-          // Keep the final title even when the source has no publish date.
-          if (index === 0 && tag === "h1" && blockText === title) return [block];
-          if ([rawTitle, baseTitle].includes(blockText) && !block.querySelector("img")) return [];
+          if (blockText === baseTitle) return [];
           if (dateLabels.has(blockText)) {
             if (tag === "p") { block.className = "body-text"; return [block]; }
             const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph];
           }
           return [block];
         });
-        // A dateless page can supply its title as h2 or after other blocks.
-        // Restore the final title if duplicate removal also removed that copy.
-        if (!normalised.blocks.some(block => /^H[12]$/.test(block.tagName) && textOf(block) === title)) {
-          const heading = document.createElement("h1"); heading.textContent = title; normalised.blocks.unshift(heading);
-        }
       }
-      // Preview and paragraph counts must reflect the final filtered blocks.
-      normalised.preview.replaceChildren(...normalised.blocks.map(block => block.cloneNode(true)));
-      normalised.paragraphs = normalised.blocks.filter(block => block.tagName?.toLowerCase() === "p" && !block.classList.contains("article-meta")).length;
-      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", ns);
+      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
       const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
       const body = xml.createElementNS(ns, "body"); for (const block of normalised.blocks) body.append(xml.importNode(block, true)); root.append(body);
@@ -653,9 +501,7 @@ a { color: inherit; }
       if (hardBreak) throw new Error("正文仍包含硬换行，未生成文件");
       for (const element of body.querySelectorAll("[style],[width],[height]")) {
         const tag = element.tagName.toLowerCase();
-        const style = element.getAttribute("style") || "";
-        const colorOnly = /^\s*color\s*:\s*[^;]+\s*$/i.test(style);
-        if ((element.hasAttribute("style") && !colorOnly) || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
+        if (element.hasAttribute("style") || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
           throw new Error("正文仍包含网页布局属性，未生成文件");
         }
       }
@@ -663,19 +509,16 @@ a { color: inherit; }
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
       const filenameParts = processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
-      // Classify images from the final XHTML tree, so the report always
-      // describes exactly what the downloaded file contains.
-      const report = { ...imageReport(check), embedAttempted: imageEmbedding.attempted, embedFailed: imageEmbedding.failed };
-      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors };
+      const report = imageReport(body);
+      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
     function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-    function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || "未识别"}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.missing || !item.output.author || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
-    async function convertAll() { state.converting = true; renderQueue(); let success = 0, index = 0; for (const item of state.items) { index++; if (item.output) { success++; continue; } item.status = "转换中"; item.error = ""; renderQueue(); try { setStatus(`第 1/2 步：正在解析第 ${index}/${state.items.length} 个文件的正文和图片地址。`); const raw = await item.file.text(); setStatus(`第 2/2 步：正在下载并内嵌第 ${index}/${state.items.length} 个文件的图片。`); item.output = await convertHtml(raw, item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查，图片按源文件保留并尽量内嵌。`, failed ? "error" : "ok"); }
+    function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || "未识别"}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || !item.output.author || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name, state.processType); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
     $("processType").addEventListener("change", event => { state.processType = event.target.value; $("modeHint").textContent = state.processType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。"; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件"); });
-    $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
     $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
     $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
   </script>
