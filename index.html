@@ -185,7 +185,23 @@ a { color: inherit; }
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
     function cleanNotionTitle(value) {
-      return normaliseText(value).trim().replace(/\s*_\s*Notion\s*$/i, "").trim();
+      return normaliseText(value).trim().replace(/(?:\s*[_|｜＿]\s*Notion)+\s*$/i, "").trim();
+    }
+    function cleanNotionHeadingSuffix(root) {
+      for (const heading of [root, ...root.querySelectorAll("h1,h2,h3,h4,h5,h6")]) {
+        if (!/^H[1-6]$/.test(heading.tagName || "")) continue;
+        const full = textOf(heading), cleaned = cleanNotionTitle(full);
+        if (full === cleaned) continue;
+        const walker = heading.ownerDocument.createTreeWalker(heading, NodeFilter.SHOW_TEXT), nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        let remaining = full.length - cleaned.length;
+        for (const node of nodes.reverse()) {
+          const cut = Math.min(remaining, node.nodeValue.length);
+          if (cut) node.nodeValue = node.nodeValue.slice(0, -cut);
+          remaining -= cut;
+          if (!remaining) break;
+        }
+      }
     }
     const notionColorMap = { "--c-redtexsec":"#d44c47", "--c-redtexpri":"#d44c47", "--c-blutexsec":"#337ea9", "--c-blutexpri":"#337ea9", "--c-gretexpri":"#448361", "--c-yeltexpri":"#cb912f" };
     function sourceColor(node) {
@@ -496,6 +512,7 @@ a { color: inherit; }
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
       const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
+      if (processType === "notion") cleanNotionHeadingSuffix(articleForNormalise);
       if (preserveColors) markColorAnnotations(articleForNormalise);
       const normalised = normaliseArticle(articleForNormalise, title, metadata);
       if (processType === "notion") {
