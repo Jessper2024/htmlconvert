@@ -25,6 +25,8 @@
     .mode-control label { color:var(--ink); font-size:13px; font-weight:700; }
     .mode-control select { min-width:190px; padding:8px 30px 8px 10px; border:1px solid #b7c9ce; border-radius:6px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
     .mode-control select:focus { outline:2px solid rgba(20,125,114,.2); border-color:var(--accent); }
+    .color-option { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; cursor:pointer; }
+    .color-option input { width:15px; height:15px; accent-color:var(--accent); }
     .mode-hint { color:var(--muted); font-size:12px; }
     button { border:0; border-radius:6px; padding:10px 15px; color:#fff; background:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
     button:hover:not(:disabled) { background:var(--accent-dark); }
@@ -78,7 +80,7 @@
   <main>
     <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
     <section class="panel import-panel">
-      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option></select><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
+      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option></select><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
       <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
@@ -118,7 +120,7 @@ table { border-collapse: collapse; max-width: 100%; }
 img { max-width: 100%; height: auto; }
 a { color: inherit; }
 `;
-    const state = { items: [], current: null, converting: false, processType: "wechat" };
+    const state = { items: [], current: null, converting: false, processType: "wechat", preserveColors: false };
     function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
     function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
     function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
@@ -182,6 +184,17 @@ a { color: inherit; }
       const match = (value || "").match(/(\d{4})\s*[年/\-.]\s*(\d{1,2})\s*[月/\-.]\s*(\d{1,2})\s*日?/);
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
     }
+    const notionColorMap = { "--c-redtexsec":"#d44c47", "--c-redtexpri":"#d44c47", "--c-blutexsec":"#337ea9", "--c-blutexpri":"#337ea9", "--c-gretexpri":"#448361", "--c-yeltexpri":"#cb912f" };
+    function sourceColor(node) {
+      const highlight = (node.getAttribute("data-notion-highlight") || "").toLowerCase();
+      const highlightMap = { red:"#d44c47", blue:"#337ea9", green:"#448361", yellow:"#cb912f", orange:"#d9730d", pink:"#c14c8a", purple:"#9065b0" };
+      if (highlightMap[highlight]) return highlightMap[highlight];
+      let value = node.getAttribute("color") || styleValue(node, "color");
+      if (value.startsWith("var(")) { const variable = value.match(/--[a-z0-9_-]+/i); value = variable ? (notionColorMap[variable[0].toLowerCase()] || "") : ""; }
+      if (!value || /^(inherit|currentcolor|transparent|initial|unset)$/i.test(value)) return "";
+      return /^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z]{3,20})$/i.test(value) ? value : "";
+    }
+    function markColorAnnotations(root) { for (const node of [root, ...root.querySelectorAll("*")]) { const color = sourceColor(node); if (color) node.setAttribute("data-sigil-color", color); } }
     function safeFileStem(value) {
       return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
     }
@@ -233,6 +246,7 @@ a { color: inherit; }
       // can split the block instead of flattening its heading into prose.
       for (const node of [...root.querySelectorAll("span,font,center,a,abbr,b,bdi,bdo,cite,code,del,em,i,ins,kbd,mark,q,s,samp,small,strong,sub,sup,time,u,var")]) {
         if ([...node.querySelectorAll("*")].every(child => !isBlock(child))) continue;
+        if (node.hasAttribute("data-sigil-color")) continue;
         const parent = node.parentNode;
         if (!parent) continue;
         while (node.firstChild) parent.insertBefore(node.firstChild, node);
@@ -240,7 +254,7 @@ a { color: inherit; }
       }
       return root;
     }
-    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); return el; }
+    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); if (source?.getAttribute("data-sigil-color")) el.setAttribute("style", `color:${source.getAttribute("data-sigil-color")}`); return el; }
     function appendTextContent(target, raw) {
       const value = normaliseText(raw);
       if (value && value.trim()) { target.append(document.createTextNode(value)); return; }
@@ -352,6 +366,7 @@ a { color: inherit; }
       if (tag === "wbr") return;
       if (tag === "img") { const img = document.createElement("img"), src = source.getAttribute("src") || source.getAttribute("data-src") || source.getAttribute("data-original"); if (src && safeUrl("src", src)) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
       let outputTag = semanticTags.has(tag) ? tag : "";
+      if (source.getAttribute("data-sigil-color")) outputTag = "span";
       if (!outputTag && tag === "span") { const weight = styleValue(source, "font-weight"), fontStyle = styleValue(source, "font-style"), decoration = styleValue(source, "text-decoration"); if (/bold|[6-9]00/.test(weight)) outputTag = "strong"; else if (/italic|oblique/.test(fontStyle)) outputTag = "em"; else if (/underline/.test(decoration)) outputTag = "u"; }
       if (outputTag) {
         const wrapper = makeSemantic(outputTag, source);
@@ -454,6 +469,9 @@ a { color: inherit; }
         });
         if (rowLabels.some(label => propertyLabels.has(label))) table.remove();
       }
+      const chromeRe = /^(?:其他\s*\d+\s*个属性|更多属性|\d+\s*more\s*properties|关联|添加\s*标签|add\s*标签)$/i;
+      for (const node of [...root.querySelectorAll('.notion-page-block')]) if (chromeRe.test(textOf(node))) node.remove();
+      for (const node of [...root.querySelectorAll('.notion-topbar,.notion-sidebar')]) node.remove();
       return root;
     }
     function imageReport(root) {
@@ -466,14 +484,16 @@ a { color: inherit; }
       }
       return report;
     }
-    function convertHtml(raw, fileName, processType = state.processType) {
+    function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
       const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
       const baseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
       const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
       const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
       const publishDate = processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
       const title = publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
-      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article, normalised = normaliseArticle(articleForNormalise, title, metadata);
+      const metadata = processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
+      if (preserveColors) markColorAnnotations(articleForNormalise);
+      const normalised = normaliseArticle(articleForNormalise, title, metadata);
       if (processType === "notion") {
         const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
         normalised.blocks = normalised.blocks.flatMap(block => {
@@ -501,7 +521,9 @@ a { color: inherit; }
       if (hardBreak) throw new Error("正文仍包含硬换行，未生成文件");
       for (const element of body.querySelectorAll("[style],[width],[height]")) {
         const tag = element.tagName.toLowerCase();
-        if (element.hasAttribute("style") || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
+        const style = element.getAttribute("style") || "";
+        const colorOnly = /^\s*color\s*:\s*[^;]+\s*$/i.test(style);
+        if ((element.hasAttribute("style") && !colorOnly) || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
           throw new Error("正文仍包含网页布局属性，未生成文件");
         }
       }
@@ -510,15 +532,16 @@ a { color: inherit; }
       const filenameParts = processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
       const report = imageReport(body);
-      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle };
+      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors };
     }
     function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
     function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
     function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-    function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || "未识别"}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || !item.output.author || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
-    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name, state.processType); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
+    function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || "未识别"}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || !item.output.author || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
     $("processType").addEventListener("change", event => { state.processType = event.target.value; $("modeHint").textContent = state.processType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。"; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件"); });
+    $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
     $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
     $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
   </script>
