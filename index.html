@@ -157,7 +157,7 @@ a { color: inherit; }
       return textOf(doc.getElementById("js_name"));
     }
     const javbusPhraseMap = {
-      "識別碼":"识别码", "發行日期":"发行日期", "長度":"长度", "導演":"导演", "製作商":"制作商", "發行商":"发行商", "類別":"类别", "蕩婦":"荡妇", "數位馬賽克":"数位马赛克", "羞恥":"羞耻", "高畫質":"高画质", "單體作品":"单体作品", "DMM獨家":"DMM独家", "演員":"演员", "磁力連結投稿":"磁力链接投稿", "磁力名稱":"磁力名称", "檔案大小":"档案大小", "樣品圖像":"样品图像", "推薦":"推荐", "投放廣告":"投放广告", "同類影片":"同类影片", "論壇熱帖":"论坛热帖", "搜尋":"搜索"
+      "識別碼":"识别码", "發行日期":"发行日期", "長度":"长度", "導演":"导演", "製作商":"制作商", "發行商":"发行商", "類別":"类别", "濫交":"滥交", "蕩婦":"荡妇", "數位馬賽克":"数位马赛克", "羞恥":"羞耻", "高畫質":"高画质", "單體作品":"单体作品", "DMM獨家":"DMM独家", "演員":"演员", "磁力連結投稿":"磁力链接投稿", "磁力名稱":"磁力名称", "檔案大小":"档案大小", "樣品圖像":"样品图像", "推薦":"推荐", "投放廣告":"投放广告", "同類影片":"同类影片", "論壇熱帖":"论坛热帖", "搜尋":"搜索"
     };
     const javbusCharMap = { "萬":"万", "與":"与", "專":"专", "業":"业", "叢":"丛", "東":"东", "絲":"丝", "丟":"丢", "兩":"两", "嚴":"严", "喪":"丧", "個":"个", "豐":"丰", "臨":"临", "為":"为", "麗":"丽", "舉":"举", "義":"义", "烏":"乌", "樂":"乐", "習":"习", "鄉":"乡", "書":"书", "買":"买", "亂":"乱", "乾":"干", "爭":"争", "亞":"亚", "產":"产", "華":"华", "發":"发", "後":"后", "導":"导", "製":"制", "長":"长", "識":"识", "別":"别", "碼":"码", "類":"类", "蕩":"荡", "婦":"妇", "數":"数", "馬":"马", "賽":"赛", "恥":"耻", "畫":"画", "質":"质", "獨":"独", "員":"员", "連":"连", "結":"结", "檔":"档", "樣":"样", "圖":"图", "薦":"荐", "廣":"广", "論":"论", "壇":"坛", "熱":"热", "尋":"寻", "標":"标", "題":"题", "錄":"录", "視":"视", "頻":"频", "選":"选", "擇":"择", "應":"应", "會":"会", "現":"现", "時":"时", "間":"间", "點":"点", "開":"开", "閉":"闭", "頁":"页", "網":"网", "經":"经", "過":"过", "從":"从", "來":"来", "對":"对", "關":"关", "於":"于", "無":"无", "據":"据", "訊":"讯", "設":"设", "計":"计", "這":"这", "將":"将", "滿":"满", "進":"进", "還":"还", "遠":"远", "變":"变", "動":"动", "態":"态", "級":"级", "線":"线", "氣":"气", "鐘":"钟", "區":"区", "國":"国", "門":"门", "問":"问", "聞":"闻", "見":"见", "觀":"观", "覺":"觉", "處":"处", "務":"务", "勝":"胜", "敗":"败", "顯":"显", "則":"则", "轉":"转", "讓":"让", "邊":"边", "節":"节", "記":"记", "復":"复", "雜":"杂", "簡":"简", "爾":"尔", "麼":"么", "總":"总", "實":"实", "寶":"宝", "場":"场", "價":"价", "參":"参", "談":"谈", "驚":"惊", "愛":"爱", "懷":"怀", "憂":"忧", "戀":"恋", "緊":"紧", "緒":"绪", "續":"续", "編":"编", "纖":"纤", "組":"组", "終":"终", "衛":"卫", "裝":"装", "載":"载", "庫":"库", "戶":"户", "雲":"云", "電":"电", "腦":"脑", "機":"机", "檢":"检", "驗":"验", "狀":"状", "擊":"击", "繫":"系", "鏈":"链", "獻":"献", "獲":"获", "擁":"拥", "護":"护", "啟":"启", "銷":"销", "號":"号" };
     function simplifyJavbusText(value) {
@@ -191,13 +191,77 @@ a { color: inherit; }
       const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
       return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : value;
     }
+    function javbusLabelKind(node) {
+      const classes = (node?.getAttribute("class") || "").toLowerCase().split(/\s+/);
+      const text = textOf(node).replace(/[\s:：]+/g, "");
+      if (classes.includes("star-show") || text === "演員" || text === "演员") return "演员";
+      if (text === "類別" || text === "类别") return "类别";
+      return "";
+    }
+    function javbusActorValueNode(info) {
+      const paragraphs = [...info.querySelectorAll("p")];
+      const visible = anchor => { for (let current = anchor; current && current !== info; current = current.parentElement) if (isHidden(current)) return false; return true; };
+      const starLink = node => [...node.querySelectorAll("a")].some(anchor => /\/star\//i.test(anchor.getAttribute("href") || "") && visible(anchor));
+      for (let index = 0; index < paragraphs.length; index++) {
+        const paragraph = paragraphs[index];
+        if (javbusLabelKind(paragraph) !== "演员") continue;
+        if (starLink(paragraph)) return paragraph;
+        for (const candidate of paragraphs.slice(index + 1)) {
+          if (javbusLabelKind(candidate)) break;
+          if (starLink(candidate)) return candidate;
+        }
+        for (let sibling = paragraph.nextElementSibling; sibling; sibling = sibling.nextElementSibling) if (sibling.tagName === "P" && !isHidden(sibling)) return sibling;
+      }
+      return paragraphs.find(starLink) || null;
+    }
+    function javbusActorLinks(doc) {
+      const info = javbusContainer(doc)?.querySelector(".row.movie .info");
+      if (!info) return [];
+      const value = javbusActorValueNode(info);
+      if (!value) return [];
+      const links = [], seen = new Set();
+      for (const anchor of [...value.querySelectorAll("a")].filter(node => /\/star\//i.test(node.getAttribute("href") || ""))) {
+        let hidden = false;
+        for (let current = anchor; current && current !== info; current = current.parentElement) if (isHidden(current)) { hidden = true; break; }
+        if (hidden) continue;
+        const href = (anchor.getAttribute("href") || "").trim();
+        let key = href.toLowerCase();
+        try { key = new URL(href, doc.baseURI || window.location.href).pathname.replace(/\/+$/, "").toLowerCase() || key; } catch {}
+        if (!key || seen.has(key)) continue;
+        seen.add(key); links.push(anchor);
+      }
+      return links;
+    }
+    function javbusActorPrefix(doc) {
+      const count = javbusActorLinks(doc).length;
+      return count === 1 ? "单人" : count === 2 ? "双人" : count >= 3 ? "多人" : "未识别";
+    }
+    function mergeJavbusMetadata(fragment) {
+      const documentForFragment = fragment.ownerDocument;
+      const paragraphs = [...fragment.children].filter(node => node.tagName === "P");
+      const linkMatches = node => [...node.querySelectorAll("a")].filter(anchor => /\/(?:genre|star)\//i.test(anchor.getAttribute("href") || ""));
+      for (const label of paragraphs) {
+        const kind = javbusLabelKind(label);
+        if (!kind) continue;
+        const value = label.nextElementSibling?.tagName === "P" && !javbusLabelKind(label.nextElementSibling) ? label.nextElementSibling : null;
+        const merged = documentForFragment.createElement("p");
+        merged.append(documentForFragment.createTextNode(`${kind}： `));
+        if (value) for (const child of [...value.childNodes]) merged.append(child.cloneNode(true));
+        else for (const child of [...label.childNodes]) if (!(child.nodeType === Node.TEXT_NODE && !child.nodeValue.trim())) merged.append(child.cloneNode(true));
+        const links = linkMatches(merged);
+        for (let index = 0; index < links.length - 1; index++) links[index].after(documentForFragment.createTextNode(" "));
+        label.replaceWith(merged);
+        if (value) value.remove();
+      }
+      return fragment;
+    }
     function selectJavbusArticle(doc) {
       const container = javbusContainer(doc), row = container?.querySelector(".row.movie");
       if (!row) return null;
       const fragment = doc.createElement("div"), cover = row.querySelector(".screencap"), info = row.querySelector(".info");
       if (cover) fragment.append(cover.cloneNode(true));
       if (info) for (const paragraph of info.querySelectorAll("p")) fragment.append(paragraph.cloneNode(true));
-      return fragment.children.length ? fragment : null;
+      return fragment.children.length ? mergeJavbusMetadata(fragment) : null;
     }
     const notionPropertyAliases = {
       "作者": ["作者", "作者名", "作者（author）", "author", "created by", "创建者"],
@@ -595,7 +659,7 @@ a { color: inherit; }
       }
       const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
       const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
-      const filenameParts = processType === "javbus" ? [javbusFilenameDate(publishDate), `${baseTitle} - JavBus`].filter(Boolean) : processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
+      const filenameParts = processType === "javbus" ? [javbusActorPrefix(doc), javbusFilenameDate(publishDate), `${baseTitle} - JavBus`].filter(Boolean) : processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
       const outputStem = safeFileStem(filenameParts.join("_"));
       const report = imageReport(body);
       return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors, processType };
