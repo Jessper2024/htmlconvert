@@ -239,6 +239,14 @@ a { color: inherit; }
       const count = javbusActorLinks(doc).length;
       return count === 1 ? "单人" : count === 2 ? "双人" : count >= 3 ? "多人" : "未识别";
     }
+    function isJavbusExcludedSection(node) {
+      const text = textOf(node).replace(/[：:]/g, "").trim();
+      return /^(?:推薦|推荐|投放廣告|投放广告|同類影片|同类影片)$/.test(text);
+    }
+    function isJavbusMetadataParagraph(node) {
+      const text = textOf(node).replace(/[：:]/g, "").trim();
+      return /^(?:識別碼|识别码|發行日期|发行日期|長度|长度|導演|导演|製作商|制作商|發行商|发行商|類別|类别|演員|演员|磁力連結投稿|磁力链接投稿|磁力名稱|磁力名称|檔案大小|档案大小)$/.test(text);
+    }
     function mergeJavbusMetadata(fragment) {
       const documentForFragment = fragment.ownerDocument;
       const paragraphs = [...fragment.children].filter(node => node.tagName === "P");
@@ -263,7 +271,18 @@ a { color: inherit; }
       if (!row) return null;
       const fragment = doc.createElement("div"), cover = row.querySelector(".screencap"), info = row.querySelector(".info");
       if (cover) fragment.append(cover.cloneNode(true));
-      if (info) for (const paragraph of info.querySelectorAll("p")) fragment.append(paragraph.cloneNode(true));
+      if (info) {
+        const paragraphs = [...info.querySelectorAll("p")];
+        for (let index = 0; index < paragraphs.length; index++) {
+          const paragraph = paragraphs[index];
+          if (isJavbusExcludedSection(paragraph)) {
+            const following = paragraphs[index + 1];
+            if (following && !isJavbusMetadataParagraph(following)) index++;
+            continue;
+          }
+          fragment.append(paragraph.cloneNode(true));
+        }
+      }
       const sampleWaterfall = container?.querySelector("#sample-waterfall");
       const sampleBoxes = sampleWaterfall ? [...sampleWaterfall.querySelectorAll("a.sample-box[href]")] : [];
       if (sampleBoxes.length) {
