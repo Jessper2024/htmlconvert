@@ -325,7 +325,9 @@ a { color: inherit; }
       const firstPost = doc.querySelector('td[id^="postmessage_"]');
       if (!firstPost) return null;
       const fragment = doc.createElement("div");
-      fragment.append(firstPost.cloneNode(true));
+      const post = firstPost.cloneNode(true);
+      post.querySelectorAll(".pstatus").forEach(node => node.remove());
+      fragment.append(post);
       return fragment;
     }
     const notionPropertyAliases = {
