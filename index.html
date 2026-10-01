@@ -129,7 +129,7 @@ ul, ol { margin: 7px 0 0 2em; }
 li { margin: 0; }
 pre { white-space: pre-wrap; }
 table { border-collapse: collapse; max-width: 100%; }
-img { max-width: 100%; height: auto; }
+img { display: block; max-width: 100%; height: auto; margin: 7px auto; }
 a { color: inherit; }
 `;
     const state = { items: [], current: null, converting: false, processType: "wechat", preserveColors: false };
@@ -844,16 +844,22 @@ a { color: inherit; }
         setStatus("预览已修改，源码已同步。", "ok");
       });
     }
+    function applyEditorImageFormat(source) {
+      if (!source.trim()) return source;
+      const rule = "<style id=\"sigil-editor-format\">img{display:block!important;max-width:100%;height:auto;margin:7px auto!important}</style>";
+      return source.includes("id=\"sigil-editor-format\"") ? source : (source.includes("</head>") ? source.replace(/<\/head>/i, `${rule}</head>`) : `${rule}${source}`);
+    }
     function updateEditorPreview() {
       const source = $("xhtmlSource").value;
-      $("xhtmlPreview").srcdoc = source || "<p style='font-family:sans-serif;color:#687583;padding:16px'>打开或输入 XHTML 后会在这里预览。</p>";
+      const previewSource = source ? applyEditorImageFormat(source) : "<p style='font-family:sans-serif;color:#687583;padding:16px'>打开或输入 XHTML 后会在这里预览。</p>";
+      $("xhtmlPreview").srcdoc = previewSource;
       $("xhtmlPreview").addEventListener("load", bindEditablePreview, { once: true });
       $("editorDownload").disabled = !source.trim();
     }
     $("xhtmlInput").addEventListener("change", async event => {
       const file = event.target.files?.[0];
       if (!file) return;
-      $("xhtmlSource").value = await file.text();
+      $("xhtmlSource").value = applyEditorImageFormat(await file.text());
       $("xhtmlName").value = /\.x?html?$/i.test(file.name) ? file.name.replace(/\.(?:xhtml|html?)$/i, "") + ".xhtml" : file.name + ".xhtml";
       updateEditorPreview();
       setStatus(`已打开 ${file.name}，可以编辑后导出。`, "ok");
@@ -863,7 +869,7 @@ a { color: inherit; }
     $("editorClear").addEventListener("click", () => { $("xhtmlSource").value = ""; $("xhtmlName").value = "edited-Sigil.xhtml"; updateEditorPreview(); });
     $("editorDownload").addEventListener("click", () => {
       const name = ($("xhtmlName").value.trim() || "edited-Sigil.xhtml").replace(/[\\/:*?"<>|]+/g, "_").replace(/\.html?$/i, ".xhtml");
-      const blob = new Blob([$("xhtmlSource").value], { type: "application/xhtml+xml;charset=utf-8" });
+      const blob = new Blob([applyEditorImageFormat($("xhtmlSource").value)], { type: "application/xhtml+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob), link = document.createElement("a");
       link.href = url; link.download = name.endsWith(".xhtml") ? name : `${name}.xhtml`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
