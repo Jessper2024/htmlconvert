@@ -328,11 +328,18 @@ a { color: inherit; }
       const post = firstPost.cloneNode(true);
       post.querySelectorAll(".pstatus").forEach(node => node.remove());
       let line = doc.createElement("p");
-      const flush = () => { if (line.childNodes.length) fragment.append(line); line = doc.createElement("p"); };
-      for (const child of [...post.childNodes]) {
-        if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === "br") { flush(); continue; }
-        line.append(child.cloneNode(true));
-      }
+      const flush = () => { if (line.textContent.trim() || line.querySelector("img")) fragment.append(line); line = doc.createElement("p"); };
+      const walk = node => {
+        for (const child of [...node.childNodes]) {
+          if (child.nodeType === Node.TEXT_NODE) { line.append(child.cloneNode(true)); continue; }
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          const tag = child.tagName.toLowerCase();
+          if (tag === "br") { flush(); continue; }
+          if (tag === "img") { line.append(child.cloneNode(true)); continue; }
+          walk(child);
+        }
+      };
+      walk(post);
       flush();
       return fragment;
     }
