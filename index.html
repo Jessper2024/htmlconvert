@@ -741,7 +741,7 @@ a { color: inherit; }
       if (processType === "javbus" || processType === "javbus_forum") simplifyJavbusTree(articleForNormalise);
       if (processType === "notion") cleanNotionHeadingSuffix(articleForNormalise);
       if (preserveColors) markColorAnnotations(articleForNormalise);
-      const normalised = normaliseArticle(articleForNormalise, title, metadata);
+      const normalised = normaliseArticle(articleForNormalise, processType === "javbus_forum" ? "" : title, metadata);
       if (processType === "notion") {
         const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
         normalised.blocks = normalised.blocks.flatMap(block => {
