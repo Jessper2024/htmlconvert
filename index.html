@@ -99,7 +99,7 @@
     </section>
     <section class="panel queue-panel converter-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
     <section class="panel result-panel converter-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p><p class="report" id="resultReport"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
-    <section class="panel editor-panel" id="editorPanel"><div class="result-head"><div><h2>XHTML 编辑器</h2><p class="meta">打开已有 XHTML，直接编辑源码，实时预览后下载修改后的文件。</p></div><label class="drop" for="xhtmlInput" style="padding:10px 14px"><strong>打开 XHTML</strong><span>选择 .xhtml 或 .html 文件</span></label></div><input id="xhtmlInput" type="file" accept=".xhtml,.html,.htm,application/xhtml+xml,text/html" style="display:none"><div class="editor-toolbar"><input id="xhtmlName" type="text" value="edited-Sigil.xhtml" aria-label="导出文件名"><button id="editorDownload" disabled>导出 XHTML</button><button class="secondary" id="editorClear" type="button">清空</button></div><textarea id="xhtmlSource" spellcheck="false" placeholder="打开 XHTML 后，源码会显示在这里。你可以直接编辑。"></textarea><div class="editor-preview"><iframe id="xhtmlPreview" title="XHTML 实时预览"></iframe></div></section>
+    <section class="panel editor-panel" id="editorPanel"><div class="result-head"><div><h2>XHTML 编辑器</h2><p class="meta">打开已有 XHTML，直接点击预览文字进行编辑；预览和源码会互相同步，完成后下载。</p></div><label class="drop" for="xhtmlInput" style="padding:10px 14px"><strong>打开 XHTML</strong><span>选择 .xhtml 或 .html 文件</span></label></div><input id="xhtmlInput" type="file" accept=".xhtml,.html,.htm,application/xhtml+xml,text/html" style="display:none"><div class="editor-toolbar"><input id="xhtmlName" type="text" value="edited-Sigil.xhtml" aria-label="导出文件名"><button id="editorDownload" disabled>导出 XHTML</button><button class="secondary" id="editorClear" type="button">清空</button></div><textarea id="xhtmlSource" spellcheck="false" placeholder="打开 XHTML 后，源码会显示在这里。你可以直接编辑。"></textarea><div class="editor-preview"><iframe id="xhtmlPreview" title="XHTML 实时预览"></iframe></div></section>
     <footer>输出是供 Sigil 后续编辑和生成 EPUB 的单章 XHTML，不是 EPUB 压缩包。正文顶格左对齐，视觉折行不会被写成硬换行；阅读器会按当前页面宽度自然换行，空白段用间距表示。批量下载可能需要允许浏览器进行多次下载。</footer>
   </main>
   <script>
@@ -829,9 +829,23 @@ a { color: inherit; }
       });
     });
     $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
+    function bindEditablePreview() {
+      const frame = $("xhtmlPreview"), previewDocument = frame.contentDocument;
+      if (!previewDocument?.body) return;
+      previewDocument.body.contentEditable = "true";
+      previewDocument.body.spellcheck = false;
+      previewDocument.body.addEventListener("input", () => {
+        const root = previewDocument.documentElement.cloneNode(true);
+        root.querySelectorAll("[contenteditable]").forEach(node => node.removeAttribute("contenteditable"));
+        $("xhtmlSource").value = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n${new XMLSerializer().serializeToString(root)}`;
+        $("editorDownload").disabled = false;
+        setStatus("预览已修改，源码已同步。", "ok");
+      });
+    }
     function updateEditorPreview() {
       const source = $("xhtmlSource").value;
       $("xhtmlPreview").srcdoc = source || "<p style='font-family:sans-serif;color:#687583;padding:16px'>打开或输入 XHTML 后会在这里预览。</p>";
+      $("xhtmlPreview").addEventListener("load", bindEditablePreview, { once: true });
       $("editorDownload").disabled = !source.trim();
     }
     $("xhtmlInput").addEventListener("change", async event => {
