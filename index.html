@@ -265,15 +265,22 @@ a { color: inherit; }
       if (cover) fragment.append(cover.cloneNode(true));
       if (info) for (const paragraph of info.querySelectorAll("p")) fragment.append(paragraph.cloneNode(true));
       const sampleWaterfall = container?.querySelector("#sample-waterfall");
-      const sampleImages = sampleWaterfall ? [...sampleWaterfall.querySelectorAll("img")] : [];
-      if (sampleImages.length) {
+      const sampleBoxes = sampleWaterfall ? [...sampleWaterfall.querySelectorAll("a.sample-box[href]")] : [];
+      if (sampleBoxes.length) {
         const heading = doc.createElement("h2");
         heading.textContent = "样品图像";
         fragment.append(heading);
-        for (const image of sampleImages) {
+        for (const box of sampleBoxes) {
+          const thumbnail = box.querySelector("img");
+          const originalUrl = (box.getAttribute("href") || "").trim();
+          if (!originalUrl) continue;
+          const image = doc.createElement("img");
+          image.setAttribute("src", originalUrl);
+          if (thumbnail?.getAttribute("alt")) image.setAttribute("alt", thumbnail.getAttribute("alt"));
+          if (thumbnail?.getAttribute("title")) image.setAttribute("title", thumbnail.getAttribute("title"));
           const paragraph = doc.createElement("p");
           paragraph.className = "image";
-          paragraph.append(image.cloneNode(true));
+          paragraph.append(image);
           fragment.append(paragraph);
         }
       }
