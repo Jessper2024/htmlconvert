@@ -680,21 +680,33 @@ a { color: inherit; }
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
           } catch {
             // Some image hosts serve the original file without CORS headers.
-            // Retry through a raw-byte proxy so the downloaded XHTML can still
-            // contain the original image bytes instead of an external URL.
-            const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(source)}`;
-            response = await fetch(proxy, { mode: "cors", credentials: "omit" });
-            if (!response.ok) throw new Error(`代理 HTTP ${response.status}`);
+            // Retry through raw-byte image proxies so the downloaded XHTML can
+            // still contain the original image bytes instead of an external URL.
+            const proxies = [
+              `https://api.allorigins.win/raw?url=${encodeURIComponent(source)}`,
+              `https://images.weserv.nl/?url=${encodeURIComponent(source)}`
+            ];
+            let lastError;
+            for (const proxy of proxies) {
+              try {
+                response = await fetch(proxy, { mode: "cors", credentials: "omit" });
+                if (response.ok) break;
+                lastError = new Error(`代理 HTTP ${response.status}`);
+              } catch (error) { lastError = error; }
+            }
+            if (!response?.ok) throw lastError || new Error("代理下载失败");
           }
           const blob = await response.blob();
-          if (!blob.type.startsWith("image/")) throw new Error("响应不是图片");
+          const guessedType = /\.(?:jpe?g)(?:[?#]|$)/i.test(source) ? "image/jpeg" : /\.png(?:[?#]|$)/i.test(source) ? "image/png" : /\.webp(?:[?#]|$)/i.test(source) ? "image/webp" : "";
+          const imageType = blob.type.startsWith("image/") ? blob.type : guessedType;
+          if (!imageType) throw new Error("响应不是图片");
           const dataUrl = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = () => reject(reader.error || new Error("读取图片失败"));
             reader.readAsDataURL(blob);
           });
-          image.setAttribute("src", dataUrl);
+          image.setAttribute("src", dataUrl.replace(/^data:[^;,]+/, `data:${imageType}`));
         } catch (error) {
           // Keep the original URL when the image host blocks browser CORS.
           // The report will expose any remaining external images after conversion.
