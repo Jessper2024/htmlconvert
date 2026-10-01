@@ -329,7 +329,13 @@ a { color: inherit; }
       const fragment = doc.createElement("div");
       const post = firstPost.cloneNode(true);
       post.querySelectorAll(".pstatus").forEach(node => node.remove());
-      fragment.append(post);
+      let line = doc.createElement("p");
+      const flush = () => { if (line.childNodes.length) fragment.append(line); line = doc.createElement("p"); };
+      for (const child of [...post.childNodes]) {
+        if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === "br") { flush(); continue; }
+        line.append(child.cloneNode(true));
+      }
+      flush();
       return fragment;
     }
     const notionPropertyAliases = {
