@@ -23,8 +23,11 @@
     .toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
     .mode-control { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; padding:12px 14px; border:1px solid #e4ecee; border-radius:7px; background:#f8fbfb; }
     .mode-control label { color:var(--ink); font-size:13px; font-weight:700; }
-    .mode-control select { min-width:190px; padding:8px 30px 8px 10px; border:1px solid #b7c9ce; border-radius:6px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
-    .mode-control select:focus { outline:2px solid rgba(20,125,114,.2); border-color:var(--accent); }
+    .mode-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+    .mode-tab { border:1px solid #b7c9ce; border-radius:6px; padding:8px 12px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
+    .mode-tab:hover { border-color:var(--accent); background:#eff9f7; }
+    .mode-tab[aria-selected="true"] { border-color:var(--accent); background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(20,125,114,.18); }
+    .mode-tab:focus-visible { outline:2px solid rgba(20,125,114,.35); outline-offset:2px; }
     .color-option { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; cursor:pointer; }
     .color-option input { width:15px; height:15px; accent-color:var(--accent); }
     .mode-hint { color:var(--muted); font-size:12px; }
@@ -80,7 +83,7 @@
   <main>
     <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
     <section class="panel import-panel">
-      <div class="mode-control"><label for="processType">处理类型</label><select id="processType"><option value="wechat" selected>微信公众号文章</option><option value="notion">Notion 文档</option><option value="javbus">JavBus 页面</option></select><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
+      <div class="mode-control"><span id="processTypeLabel" class="mode-label">处理类型</span><div id="processType" class="mode-tabs" role="tablist" aria-label="处理类型"><button class="mode-tab" id="tab-wechat" type="button" role="tab" aria-selected="true" aria-controls="panel-wechat" data-type="wechat" tabindex="0">微信公众号文章</button><button class="mode-tab" id="tab-notion" type="button" role="tab" aria-selected="false" aria-controls="panel-notion" data-type="notion" tabindex="-1">Notion 文档</button><button class="mode-tab" id="tab-javbus" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus" data-type="javbus" tabindex="-1">JavBus 页面</button></div><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
       <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
@@ -670,7 +673,31 @@ a { color: inherit; }
     function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || (item.output.processType === "javbus" ? "JavBus" : "未识别")}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || (!item.output.author && item.output.processType !== "javbus") || !item.output.publishDate ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
     async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = convertHtml(await item.file.text(), item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
-    $("processType").addEventListener("change", event => { state.processType = event.target.value; $("modeHint").textContent = state.processType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : state.processType === "notion" ? "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。" : "提取 JavBus 主图和影片资料，繁体字转为简体字，并在磁力链接投稿处截断。"; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件"); });
+    function setProcessType(nextType, focusTab = false) {
+      if (!["wechat", "notion", "javbus"].includes(nextType)) return;
+      state.processType = nextType;
+      for (const tab of document.querySelectorAll(".mode-tab")) {
+        const active = tab.dataset.type === nextType;
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+        tab.tabIndex = active ? 0 : -1;
+        if (active && focusTab) tab.focus();
+      }
+      $("modeHint").textContent = nextType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : nextType === "notion" ? "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。" : "提取 JavBus 主图和影片资料，繁体字转为简体字，并在磁力链接投稿处截断。";
+      for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; }
+      $("resultPanel").classList.remove("visible"); state.current = null; renderQueue();
+      setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件");
+    }
+    document.querySelectorAll(".mode-tab").forEach(tab => {
+      tab.addEventListener("click", () => setProcessType(tab.dataset.type));
+      tab.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll(".mode-tab")];
+        const index = tabs.indexOf(tab);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        setProcessType(tabs[next].dataset.type, true);
+      });
+    });
     $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
     $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
     $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
