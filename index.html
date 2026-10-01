@@ -674,8 +674,18 @@ a { color: inherit; }
         const source = (image.getAttribute("src") || "").trim();
         if (!/^https?:\/\//i.test(source)) return;
         try {
-          const response = await fetch(source, { mode: "cors", credentials: "omit" });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          let response;
+          try {
+            response = await fetch(source, { mode: "cors", credentials: "omit" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          } catch {
+            // Some image hosts serve the original file without CORS headers.
+            // Retry through a raw-byte proxy so the downloaded XHTML can still
+            // contain the original image bytes instead of an external URL.
+            const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(source)}`;
+            response = await fetch(proxy, { mode: "cors", credentials: "omit" });
+            if (!response.ok) throw new Error(`代理 HTTP ${response.status}`);
+          }
           const blob = await response.blob();
           if (!blob.type.startsWith("image/")) throw new Error("响应不是图片");
           const dataUrl = await new Promise((resolve, reject) => {
