@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JavBus HTML 格式转换器</title>
+  <style>
+    #tab-wechat, #tab-notion, #tab-editor { display:none; }
+
+    :root { color-scheme: light; --ink:#17212b; --muted:#687583; --line:#dbe3e8; --paper:#fff; --bg:#f3f6f7; --accent:#147d72; --accent-dark:#0d675d; --danger:#b23b3b; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC",Arial,sans-serif; }
+    main { width:min(1080px,calc(100% - 32px)); margin:auto; padding:42px 0 56px; }
+    header { display:flex; justify-content:space-between; align-items:flex-end; gap:28px; margin-bottom:25px; }
+    .eyebrow { margin:0 0 7px; color:var(--accent); font-size:12px; letter-spacing:.16em; font-weight:700; }
+    h1 { margin:0; font-size:clamp(28px,4vw,40px); line-height:1.15; letter-spacing:0; }
+    .lead { max-width:520px; margin:0; color:var(--muted); }
+    .panel { background:var(--paper); border:1px solid var(--line); border-radius:9px; box-shadow:0 8px 24px rgba(20,35,45,.045); }
+    .import-panel { padding:20px; }
+    .drop { display:block; padding:27px 22px; text-align:center; border:1.5px dashed #a9bac4; border-radius:8px; background:#fbfcfc; cursor:pointer; transition:.16s ease; }
+    .drop:hover,.drop.dragover { border-color:var(--accent); background:#eff9f7; }
+    .drop strong { display:block; font-size:17px; }
+    .drop span { display:block; margin-top:4px; color:var(--muted); font-size:13px; }
+    #fileInput { display:none; }
+    .toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
+    .mode-control { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; padding:12px 14px; border:1px solid #e4ecee; border-radius:7px; background:#f8fbfb; }
+    .mode-control label { color:var(--ink); font-size:13px; font-weight:700; }
+    .mode-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+    .mode-tab { border:1px solid #b7c9ce; border-radius:6px; padding:8px 12px; color:var(--ink); background:#fff; font:inherit; cursor:pointer; }
+    .mode-tab:hover { border-color:var(--accent); background:#eff9f7; }
+    .mode-tab[aria-selected="true"] { border-color:var(--accent); background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(20,125,114,.18); }
+    .mode-tab:focus-visible { outline:2px solid rgba(20,125,114,.35); outline-offset:2px; }
+    .color-option { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; cursor:pointer; }
+    .color-option input { width:15px; height:15px; accent-color:var(--accent); }
+    .mode-hint { color:var(--muted); font-size:12px; }
+    button { border:0; border-radius:6px; padding:10px 15px; color:#fff; background:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
+    button:hover:not(:disabled) { background:var(--accent-dark); }
+    button:disabled { cursor:not-allowed; opacity:.43; }
+    button.secondary { color:var(--ink); background:#e8eef0; }
+    button.secondary:hover:not(:disabled) { background:#dce6e9; }
+    button.ghost { padding:6px 9px; color:var(--accent-dark); background:transparent; font-size:13px; }
+    button.ghost:hover:not(:disabled) { background:#edf7f5; }
+    .status { min-height:24px; margin:12px 0 0; color:var(--muted); font-size:13px; }
+    .status.error { color:var(--danger); }
+    .status.ok { color:var(--accent-dark); }
+    .queue-panel { margin-top:20px; overflow:hidden; }
+    .queue-head { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:17px 20px; border-bottom:1px solid var(--line); }
+    .queue-head h2 { margin:0; font-size:17px; }
+    .summary { color:var(--muted); font-size:13px; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; min-width:650px; }
+    th,td { padding:12px 20px; border-bottom:1px solid #edf1f3; text-align:left; vertical-align:middle; }
+    th { color:var(--muted); background:#fbfcfc; font-size:12px; font-weight:700; }
+    tbody tr:last-child td { border-bottom:0; }
+    .file-cell { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+    .size-cell { color:var(--muted); white-space:nowrap; font-size:13px; }
+    .badge { display:inline-flex; align-items:center; min-width:52px; justify-content:center; padding:3px 8px; border-radius:999px; background:#eef2f3; color:var(--muted); font-size:12px; }
+    .badge.processing { color:#7c5a0d; background:#fff5d7; }
+    .badge.success { color:#12695f; background:#e3f5f1; }
+    .badge.failed { color:#a62f2f; background:#fbe9e9; }
+    .empty { padding:30px 20px; color:var(--muted); text-align:center; }
+    .result-panel { display:none; margin-top:20px; padding:20px; }
+    .result-panel.visible { display:block; }
+    .result-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+    .result-head h2 { margin:0; font-size:17px; }
+    .meta { margin:4px 0 0; color:var(--muted); font-size:13px; }
+    .report { margin:8px 0 0; color:var(--muted); font-size:12px; }
+    .report.warning { color:#9a6410; }
+    .preview { max-height:320px; overflow:auto; margin-top:16px; padding:17px 19px; border:1px solid var(--line); border-radius:7px; background:#fff; color:#111; font-family:serif; line-height:1.6; text-align:left; white-space:normal; overflow-wrap:break-word; }
+    .preview h1 { margin:.67em 0; font-size:1.5em; line-height:1.2; text-align:center; }
+    .preview h2.section-title { margin:.83em 0; font-size:1.375em; line-height:1.2; text-align:center; }
+    .preview p { display:block; margin:7px 0 0; line-height:1.5; text-align:left; text-indent:0; white-space:normal; overflow-wrap:break-word; word-break:normal; }
+    .preview p.article-meta { margin:0 0 1em; color:#777; text-indent:0; }
+    .preview p.image { text-align:center; text-indent:0; }
+    .preview .spacer { display:block; height:7px; }
+    .preview img { max-width:100%; height:auto; }
+    .editor-panel { display:none; margin-top:20px; padding:20px; }
+    .editor-panel.visible { display:block; }
+    .editor-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:0 0 12px; }
+    .editor-toolbar input { min-width:260px; flex:1; padding:10px 11px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+    #xhtmlSource { display:none !important; }
+    .editor-preview { min-height:220px; margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+    .editor-preview iframe { display:block; width:100%; min-height:420px; border:0; background:#fff; }
+    .hidden-panel { display:none !important; }
+    details { margin-top:15px; }
+    summary { color:var(--muted); cursor:pointer; font-size:13px; }
+    textarea { display:block; width:100%; min-height:130px; margin-top:8px; padding:9px; border:1px solid var(--line); border-radius:6px; resize:vertical; color:#384652; background:#fafcfd; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    footer { margin-top:20px; color:var(--muted); font-size:12px; }
+    @media (max-width:680px) { main{width:min(100% - 22px,1080px);padding-top:28px} header{display:block} .lead{margin-top:10px} .queue-head{align-items:flex-start;display:block} .summary{display:block;margin-top:4px} .result-head{display:block} .result-head button{margin-top:13px} }
+  </style>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">JAVBUS → REFLOW XHTML</p><h1>JavBus HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
+    <section class="panel import-panel converter-panel">
+      <div class="mode-control"><span id="processTypeLabel" class="mode-label">处理类型</span><div id="processType" class="mode-tabs" role="tablist" aria-label="处理类型"><button class="mode-tab" id="tab-wechat" type="button" role="tab" aria-selected="false" aria-controls="panel-wechat" data-type="wechat" tabindex="0">微信公众号文章</button><button class="mode-tab" id="tab-notion" type="button" role="tab" aria-selected="false" aria-controls="panel-notion" data-type="notion" tabindex="-1">Notion 文档</button><button class="mode-tab" id="tab-javbus" type="button" role="tab" aria-selected="true" aria-controls="panel-javbus" data-type="javbus" tabindex="0">JavBus 页面</button><button class="mode-tab" id="tab-javbus-forum" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus-forum" data-type="javbus_forum" tabindex="-1">JavBus 论坛帖子</button><button class="mode-tab" id="tab-editor" type="button" role="tab" aria-selected="false" aria-controls="panel-editor" data-type="editor" tabindex="-1">XHTML 编辑器</button></div><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">仅处理 JavBus 页面或 JavBus 论坛帖子；图片会按对应规则内嵌。</span></div>
+      <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
+      <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
+      <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
+      <p class="status" id="status">等待添加文件</p>
+    </section>
+    <section class="panel queue-panel converter-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
+    <section class="panel result-panel converter-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p><p class="report" id="resultReport"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
+    <section class="panel editor-panel" id="editorPanel"><div class="result-head"><div><h2>XHTML 编辑器</h2><p class="meta">打开 XHTML 后直接在页面上编辑内容，完成后导出下载。</p></div><label class="drop" for="xhtmlInput" style="padding:10px 14px"><strong>打开 XHTML</strong><span>选择 .xhtml 或 .html 文件</span></label></div><input id="xhtmlInput" type="file" accept=".xhtml,.html,.htm,application/xhtml+xml,text/html" style="display:none"><div class="editor-toolbar"><input id="xhtmlName" type="text" value="edited-Sigil.xhtml" aria-label="导出文件名"><button id="editorDownload" disabled>导出 XHTML</button><button class="secondary" id="editorClear" type="button">清空</button></div><textarea id="xhtmlSource" spellcheck="false" placeholder="打开 XHTML 后，源码会显示在这里。你可以直接编辑。"></textarea><div class="editor-preview"><iframe id="xhtmlPreview" title="XHTML 实时预览"></iframe></div></section>
+    <footer>输出是供 Sigil 后续编辑和生成 EPUB 的单章 XHTML，不是 EPUB 压缩包。正文顶格左对齐，视觉折行不会被写成硬换行；阅读器会按当前页面宽度自然换行，空白段用间距表示。批量下载可能需要允许浏览器进行多次下载。</footer>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const removeTags = new Set(["button","canvas","form","iframe","input","link","meta","script","select","style","svg","template","textarea","aside","footer","header","nav","noscript"]);
+    const blockTags = new Set(["address","article","blockquote","div","dl","dt","dd","figure","figcaption","h1","h2","h3","h4","h5","h6","hr","li","main","ol","p","pre","section","table","tbody","td","tfoot","th","thead","tr","ul"]);
+    const semanticTags = new Set(["a","abbr","b","bdi","bdo","cite","code","del","em","i","ins","kbd","mark","q","s","samp","small","strong","sub","sup","time","u","var"]);
+    const inlineWrapperTags = new Set([...semanticTags, "span", "font", "center"]);
+    const centerMarker = "data-sigil-centered";
+    // Numbered prose such as “1、今天多晶硅期货……” is ordinary body text.
+    // Only recognise explicit chapter markers, or short numbered labels, as
+    // section headings.  The length guard prevents long list entries from
+    // becoming headings even when they start with a number and punctuation.
+    const sectionTitleRe = /^\s*(?:第\s*[0-9一二三四五六七八九十百千]+\s*[章节篇回]|[0-9]+\s*[/／]\s*\S.{0,50}|[0-9]+\s*[.．]\s*\S.{0,50})/;
+    const bookCss = `
+html { margin: 0; padding: 0; }
+body { display: block; margin: 0; padding: 0; color: #111; background: #fff; font-family: serif; font-size: 1em; line-height: 1.6; text-align: left; white-space: normal; overflow-wrap: break-word; }
+h1 { display: block; margin: .67em 0; font-size: 1.5em; font-weight: bold; line-height: 1.2; text-align: center; text-indent: 0; }
+h2.section-title, h3.section-title { display: block; margin: .83em 0; font-size: 1.375em; font-weight: bold; line-height: 1.2; text-align: center; text-indent: 0; break-after: avoid; }
+p { display: block; margin: 7px 0 0; line-height: 1.5; text-align: left; text-indent: 0; white-space: normal; overflow-wrap: break-word; word-break: normal; }
+p.lead { font-style: italic; }
+p.article-meta { display:block; margin:0 0 1em; color:#777; text-align:left; text-indent:0; white-space:normal; }
+p.image { margin: 7px 0 0; text-align: center; text-indent: 0; }
+div.spacer { display: block; height: 7px; margin: 0; }
+blockquote { margin: 7px 2em 0; text-align: left; }
+ul, ol { margin: 7px 0 0 2em; }
+li { margin: 0; }
+pre { white-space: pre-wrap; }
+table { border-collapse: collapse; max-width: 100%; }
+img { display: block; max-width: 100%; height: auto; margin: 7px auto; }
+a { color: inherit; }
+`;
+    const state = { items: [], current: null, converting: false, processType: "javbus", preserveColors: false };
+    function formatSize(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
+    function setStatus(text, kind = "") { const el = $("status"); el.textContent = text; el.className = `status ${kind}`; }
+    function safeUrl(name, value) { const v = value.trim().toLowerCase(); if (v.startsWith("javascript:") || v.startsWith("vbscript:") || v.startsWith("data:text/html")) return false; return name !== "src" || !v.startsWith("data:") || v.startsWith("data:image/"); }
+    function normaliseText(value) { return (value || "").replace(/\u00a0/g, " ").replace(/[\t\r\n\f ]+/g, " "); }
+    function styleValue(node, property) { const style = node.getAttribute?.("style") || ""; const match = style.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "i")); return match ? match[1].trim().toLowerCase() : ""; }
+    function isHidden(node) { const style = node.getAttribute?.("style") || "", classes = (node.getAttribute?.("class") || "").toLowerCase().split(/\s+/); return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(style) || classes.includes("sf-hidden") || classes.includes("hidden") || node.getAttribute?.("aria-hidden") === "true"; }
+    function isCentered(node) { const value = styleValue(node, "text-align"); return node.getAttribute?.(centerMarker) === "1" || value === "center" || node.getAttribute?.("align")?.toLowerCase() === "center" || /(?:^|\s)(?:center|text-center)(?:\s|$)/i.test(node.getAttribute?.("class") || ""); }
+    function isBlock(node) { return node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName.toLowerCase()); }
+    function hasBlockChild(node) { return [...node.children].some(isBlock); }
+    function textOf(node) { return normaliseText(node?.textContent || "").trim(); }
+    function extractArticleMeta(doc) {
+      const values = [], ids = ["copyright_logo","js_author_name_text","js_author_name","js_name","publish_time","js_ip_wording"];
+      for (const id of ids) { const value = textOf(doc.getElementById(id)); if (value && !values.includes(value)) values.push(value); }
+      if (!values.length) { const author = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim(); if (author) values.push(author); }
+      return values;
+    }
+    function extractPublishDate(doc) {
+      const value = textOf(doc.getElementById("publish_time"));
+      const match = value.match(/(\d{4}年\d{1,2}月\d{1,2}日)/);
+      return match ? match[1] : "";
+    }
+    function extractAuthor(doc) {
+      // WeChat snapshots expose the displayed author in one of these fields.
+      // Keep the author separate from js_name (the account/display name) so it
+      // can be used in the downloaded filename without changing the title.
+      for (const id of ["js_author_name_text", "js_author_name"]) {
+        const value = textOf(doc.getElementById(id));
+        if (value) return value;
+      }
+      const metaAuthor = doc.querySelector('meta[name="author"]')?.getAttribute("content")?.trim();
+      return metaAuthor || "";
+    }
+    function extractAccountName(doc) {
+      return textOf(doc.getElementById("js_name"));
+    }
+    const javbusPhraseMap = {
+      "識別碼":"识别码", "發行日期":"发行日期", "長度":"长度", "導演":"导演", "製作商":"制作商", "發行商":"发行商", "類別":"类别", "濫交":"滥交", "蕩婦":"荡妇", "數位馬賽克":"数位马赛克", "羞恥":"羞耻", "高畫質":"高画质", "單體作品":"单体作品", "DMM獨家":"DMM独家", "演員":"演员", "磁力連結投稿":"磁力链接投稿", "磁力名稱":"磁力名称", "檔案大小":"档案大小", "樣品圖像":"样品图像", "推薦":"推荐", "投放廣告":"投放广告", "同類影片":"同类影片", "論壇熱帖":"论坛热帖", "搜尋":"搜索"
+    };
+    const javbusCharMap = { "萬":"万", "與":"与", "專":"专", "業":"业", "叢":"丛", "東":"东", "絲":"丝", "丟":"丢", "兩":"两", "嚴":"严", "喪":"丧", "個":"个", "豐":"丰", "臨":"临", "為":"为", "麗":"丽", "舉":"举", "義":"义", "烏":"乌", "樂":"乐", "習":"习", "鄉":"乡", "書":"书", "買":"买", "亂":"乱", "乾":"干", "爭":"争", "亞":"亚", "產":"产", "華":"华", "發":"发", "後":"后", "導":"导", "製":"制", "長":"长", "識":"识", "別":"别", "碼":"码", "類":"类", "蕩":"荡", "婦":"妇", "數":"数", "馬":"马", "賽":"赛", "恥":"耻", "畫":"画", "質":"质", "獨":"独", "員":"员", "連":"连", "結":"结", "檔":"档", "樣":"样", "圖":"图", "薦":"荐", "廣":"广", "論":"论", "壇":"坛", "熱":"热", "尋":"寻", "標":"标", "題":"题", "錄":"录", "視":"视", "頻":"频", "選":"选", "擇":"择", "應":"应", "會":"会", "現":"现", "時":"时", "間":"间", "點":"点", "開":"开", "閉":"闭", "頁":"页", "網":"网", "經":"经", "過":"过", "從":"从", "來":"来", "對":"对", "關":"关", "於":"于", "無":"无", "據":"据", "訊":"讯", "設":"设", "計":"计", "這":"这", "將":"将", "滿":"满", "進":"进", "還":"还", "遠":"远", "變":"变", "動":"动", "態":"态", "級":"级", "線":"线", "氣":"气", "鐘":"钟", "區":"区", "國":"国", "門":"门", "問":"问", "聞":"闻", "見":"见", "觀":"观", "覺":"觉", "處":"处", "務":"务", "勝":"胜", "敗":"败", "顯":"显", "則":"则", "轉":"转", "讓":"让", "邊":"边", "節":"节", "記":"记", "復":"复", "雜":"杂", "簡":"简", "爾":"尔", "麼":"么", "總":"总", "實":"实", "寶":"宝", "場":"场", "價":"价", "參":"参", "談":"谈", "驚":"惊", "愛":"爱", "懷":"怀", "憂":"忧", "戀":"恋", "緊":"紧", "緒":"绪", "續":"续", "編":"编", "纖":"纤", "組":"组", "終":"终", "衛":"卫", "裝":"装", "載":"载", "庫":"库", "戶":"户", "雲":"云", "電":"电", "腦":"脑", "機":"机", "檢":"检", "驗":"验", "狀":"状", "擊":"击", "繫":"系", "鏈":"链", "獻":"献", "獲":"获", "擁":"拥", "護":"护", "啟":"启", "銷":"销", "號":"号" };
+    function simplifyJavbusText(value) {
+      let text = value || "";
+      for (const key of Object.keys(javbusPhraseMap).sort((a, b) => b.length - a.length)) text = text.split(key).join(javbusPhraseMap[key]);
+      return [...text].map(char => javbusCharMap[char] || char).join("");
+    }
+    function simplifyJavbusTree(root) {
+      const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const node of nodes) node.nodeValue = simplifyJavbusText(node.nodeValue);
+      for (const node of [root, ...root.querySelectorAll("[alt],[title]")]) {
+        for (const attr of ["alt", "title"]) if (node.hasAttribute?.(attr)) node.setAttribute(attr, simplifyJavbusText(node.getAttribute(attr)));
+      }
+      return root;
+    }
+    function javbusContainer(doc) {
+      return [...doc.querySelectorAll(".container")].find(node => node.querySelector("h3") && node.querySelector(".row.movie")) || null;
+    }
+    function javbusTitle(doc) {
+      const container = javbusContainer(doc), heading = container?.querySelector("h3");
+      const value = textOf(heading) || normaliseText(doc.title || "Article").trim();
+      return value.replace(/\s*(?:[-:：|｜]\s*)?JavBus\s*$/i, "").trim() || "Article";
+    }
+    function javbusDate(doc) {
+      const container = javbusContainer(doc), info = container?.querySelector(".row.movie .info") || container;
+      const match = textOf(info).match(/(?:發行日期|发行日期)\s*[:：]?\s*(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/);
+      return match ? `${match[1]}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}` : "";
+    }
+    function javbusFilenameDate(value) {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : value;
+    }
+    function javbusLabelKind(node) {
+      const classes = (node?.getAttribute("class") || "").toLowerCase().split(/\s+/);
+      const text = textOf(node).replace(/[\s:：]+/g, "");
+      if (classes.includes("star-show") || text === "演員" || text === "演员") return "演员";
+      if (text === "類別" || text === "类别") return "类别";
+      return "";
+    }
+    function javbusActorValueNode(info) {
+      const paragraphs = [...info.querySelectorAll("p")];
+      const visible = anchor => { for (let current = anchor; current && current !== info; current = current.parentElement) if (isHidden(current)) return false; return true; };
+      const starLink = node => [...node.querySelectorAll("a")].some(anchor => /\/star\//i.test(anchor.getAttribute("href") || "") && visible(anchor));
+      for (let index = 0; index < paragraphs.length; index++) {
+        const paragraph = paragraphs[index];
+        if (javbusLabelKind(paragraph) !== "演员") continue;
+        if (starLink(paragraph)) return paragraph;
+        for (const candidate of paragraphs.slice(index + 1)) {
+          if (javbusLabelKind(candidate)) break;
+          if (starLink(candidate)) return candidate;
+        }
+        for (let sibling = paragraph.nextElementSibling; sibling; sibling = sibling.nextElementSibling) if (sibling.tagName === "P" && !isHidden(sibling)) return sibling;
+      }
+      return paragraphs.find(starLink) || null;
+    }
+    function javbusActorLinks(doc) {
+      const info = javbusContainer(doc)?.querySelector(".row.movie .info");
+      if (!info) return [];
+      const value = javbusActorValueNode(info);
+      if (!value) return [];
+      const links = [], seen = new Set();
+      for (const anchor of [...value.querySelectorAll("a")].filter(node => /\/star\//i.test(node.getAttribute("href") || ""))) {
+        let hidden = false;
+        for (let current = anchor; current && current !== info; current = current.parentElement) if (isHidden(current)) { hidden = true; break; }
+        if (hidden) continue;
+        const href = (anchor.getAttribute("href") || "").trim();
+        let key = href.toLowerCase();
+        try { key = new URL(href, doc.baseURI || window.location.href).pathname.replace(/\/+$/, "").toLowerCase() || key; } catch {}
+        if (!key || seen.has(key)) continue;
+        seen.add(key); links.push(anchor);
+      }
+      return links;
+    }
+    function javbusActorPrefix(doc) {
+      const count = javbusActorLinks(doc).length;
+      return count === 1 ? "单人" : count === 2 ? "双人" : count >= 3 ? "多人" : "未识别";
+    }
+    function isJavbusExcludedSection(node) {
+      const text = textOf(node).replace(/[：:]/g, "").trim();
+      return /^(?:推薦|推荐|投放廣告|投放广告|同類影片|同类影片)$/.test(text);
+    }
+    function isJavbusMetadataParagraph(node) {
+      const text = textOf(node).replace(/[：:]/g, "").trim();
+      return /^(?:識別碼|识别码|發行日期|发行日期|長度|长度|導演|导演|製作商|制作商|發行商|发行商|類別|类别|演員|演员|磁力連結投稿|磁力链接投稿|磁力名稱|磁力名称|檔案大小|档案大小)$/.test(text);
+    }
+    function mergeJavbusMetadata(fragment) {
+      const documentForFragment = fragment.ownerDocument;
+      const paragraphs = [...fragment.children].filter(node => node.tagName === "P");
+      const linkMatches = node => [...node.querySelectorAll("a")].filter(anchor => /\/(?:genre|star)\//i.test(anchor.getAttribute("href") || ""));
+      for (const label of paragraphs) {
+        const kind = javbusLabelKind(label);
+        if (!kind) continue;
+        const value = label.nextElementSibling?.tagName === "P" && !javbusLabelKind(label.nextElementSibling) ? label.nextElementSibling : null;
+        const merged = documentForFragment.createElement("p");
+        merged.append(documentForFragment.createTextNode(`${kind}： `));
+        if (value) for (const child of [...value.childNodes]) merged.append(child.cloneNode(true));
+        else for (const child of [...label.childNodes]) if (!(child.nodeType === Node.TEXT_NODE && !child.nodeValue.trim())) merged.append(child.cloneNode(true));
+        const links = linkMatches(merged);
+        for (let index = 0; index < links.length - 1; index++) links[index].after(documentForFragment.createTextNode(" "));
+        label.replaceWith(merged);
+        if (value) value.remove();
+      }
+      return fragment;
+    }
+    function selectJavbusArticle(doc) {
+      const container = javbusContainer(doc), row = container?.querySelector(".row.movie");
+      if (!row) return null;
+      const fragment = doc.createElement("div"), cover = row.querySelector(".screencap"), info = row.querySelector(".info");
+      if (cover) fragment.append(cover.cloneNode(true));
+      if (info) {
+        const paragraphs = [...info.querySelectorAll("p")];
+        for (let index = 0; index < paragraphs.length; index++) {
+          const paragraph = paragraphs[index];
+          if (isJavbusExcludedSection(paragraph)) {
+            const following = paragraphs[index + 1];
+            if (following && !isJavbusMetadataParagraph(following)) index++;
+            continue;
+          }
+          fragment.append(paragraph.cloneNode(true));
+        }
+      }
+      const sampleWaterfall = container?.querySelector("#sample-waterfall");
+      const sampleBoxes = sampleWaterfall ? [...sampleWaterfall.querySelectorAll("a.sample-box[href]")] : [];
+      if (sampleBoxes.length) {
+        const heading = doc.createElement("h2");
+        heading.textContent = "样品图像";
+        fragment.append(heading);
+        for (const box of sampleBoxes) {
+          const thumbnail = box.querySelector("img");
+          const originalUrl = (box.getAttribute("href") || "").trim();
+          if (!originalUrl) continue;
+          const image = doc.createElement("img");
+          image.setAttribute("src", originalUrl);
+          if (thumbnail?.getAttribute("alt")) image.setAttribute("alt", thumbnail.getAttribute("alt"));
+          if (thumbnail?.getAttribute("title")) image.setAttribute("title", thumbnail.getAttribute("title"));
+          const paragraph = doc.createElement("p");
+          paragraph.className = "image";
+          paragraph.append(image);
+          fragment.append(paragraph);
+        }
+      }
+      return fragment.children.length ? mergeJavbusMetadata(fragment) : null;
+    }
+    function javbusForumTitle(doc) {
+      const subject = doc.querySelector("#thread_subject");
+      let value = textOf(subject) || normaliseText(doc.title || "JavBus 论坛帖子").trim();
+      value = value.replace(/\s*\[复制链接\]\s*$/i, "").replace(/\s*\[複製鏈接\]\s*$/i, "");
+      value = value.replace(/\s+-\s+老司機(?:福利討論區|論壇).*/i, "").trim();
+      return simplifyJavbusText(value) || "JavBus 论坛帖子";
+    }
+    function selectJavbusForumArticle(doc) {
+      const firstPost = doc.querySelector('td[id^="postmessage_"]');
+      if (!firstPost) return null;
+      const fragment = doc.createElement("div");
+      const post = firstPost.cloneNode(true);
+      post.querySelectorAll(".pstatus").forEach(node => node.remove());
+      fragment.append(post);
+      return fragment;
+    }
+    const notionPropertyAliases = {
+      "作者": ["作者", "作者名", "作者（author）", "author", "created by", "创建者"],
+      "发布时间": ["发布时间", "发布日期", "发布日期（published）", "published", "publish date", "published date", "date", "日期", "创建时间", "created time"]
+    };
+    function normaliseNotionLabel(value) { return normaliseText(value).trim().replace(/[：:]$/u, "").replace(/\s+/g, " ").toLocaleLowerCase(); }
+    function notionProperty(doc, label) {
+      const wanted = new Set((notionPropertyAliases[label] || [label]).map(normaliseNotionLabel));
+      for (const row of doc.querySelectorAll('[role="row"]')) {
+        let cells = [...row.querySelectorAll('[role="cell"]')];
+        if (cells.length < 2) cells = [...row.children].filter(cell => ["TD", "TH", "DIV"].includes(cell.tagName));
+        const values = cells.map(textOf).filter(Boolean);
+        if (values.length >= 2 && wanted.has(normaliseNotionLabel(values[0]))) return values[1];
+      }
+      // Some SingleFile captures lose ARIA roles but retain the two-column
+      // property table.  Restrict the fallback to that table so article text
+      // containing words such as “作者” is never mistaken for metadata.
+      for (const row of doc.querySelectorAll('[role="table"] > div, [role="table"] [role="row"]')) {
+        let cells = [...row.querySelectorAll('[role="cell"]')];
+        if (cells.length < 2) cells = [...row.children].filter(cell => ["TD", "TH", "DIV"].includes(cell.tagName));
+        const values = cells.map(textOf).filter(Boolean);
+        if (values.length >= 2 && wanted.has(normaliseNotionLabel(values[0]))) return values[1];
+      }
+      return "";
+    }
+    function notionDate(value) {
+      const match = (value || "").match(/(\d{4})\s*[年/\-.]\s*(\d{1,2})\s*[月/\-.]\s*(\d{1,2})\s*日?/);
+      return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : "";
+    }
+    function cleanNotionTitle(value) {
+      return normaliseText(value).trim().replace(/(?:\s*[_|｜＿]\s*Notion)+\s*$/i, "").trim();
+    }
+    function cleanNotionHeadingSuffix(root) {
+      for (const heading of [root, ...root.querySelectorAll("h1,h2,h3,h4,h5,h6")]) {
+        if (!/^H[1-6]$/.test(heading.tagName || "")) continue;
+        const full = textOf(heading), cleaned = cleanNotionTitle(full);
+        if (full === cleaned) continue;
+        const walker = heading.ownerDocument.createTreeWalker(heading, NodeFilter.SHOW_TEXT), nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        let remaining = full.length - cleaned.length;
+        for (const node of nodes.reverse()) {
+          const cut = Math.min(remaining, node.nodeValue.length);
+          if (cut) node.nodeValue = node.nodeValue.slice(0, -cut);
+          remaining -= cut;
+          if (!remaining) break;
+        }
+      }
+    }
+    const notionColorMap = { "--c-redtexsec":"#d44c47", "--c-redtexpri":"#d44c47", "--c-blutexsec":"#337ea9", "--c-blutexpri":"#337ea9", "--c-gretexpri":"#448361", "--c-yeltexpri":"#cb912f" };
+    function sourceColor(node) {
+      const highlight = (node.getAttribute("data-notion-highlight") || "").toLowerCase();
+      const highlightMap = { red:"#d44c47", blue:"#337ea9", green:"#448361", yellow:"#cb912f", orange:"#d9730d", pink:"#c14c8a", purple:"#9065b0" };
+      if (highlightMap[highlight]) return highlightMap[highlight];
+      let value = node.getAttribute("color") || styleValue(node, "color");
+      if (value.startsWith("var(")) { const variable = value.match(/--[a-z0-9_-]+/i); value = variable ? (notionColorMap[variable[0].toLowerCase()] || "") : ""; }
+      if (!value || /^(inherit|currentcolor|transparent|initial|unset)$/i.test(value)) return "";
+      return /^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z]{3,20})$/i.test(value) ? value : "";
+    }
+    function markColorAnnotations(root) { for (const node of [root, ...root.querySelectorAll("*")]) { const color = sourceColor(node); if (color) node.setAttribute("data-sigil-color", color); } }
+    function safeFileStem(value) {
+      return (value || "Article").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Article";
+    }
+    function hasMeaningful(node) { return Boolean(textOf(node) || node.querySelector?.("img")); }
+    function onlyBreaks(node) {
+      if (!node) return false;
+      let found = false;
+      const visit = current => {
+        if (current.nodeType === Node.TEXT_NODE) return !normaliseText(current.nodeValue).trim();
+        if (current.nodeType !== Node.ELEMENT_NODE) return true;
+        for (const child of current.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            if (normaliseText(child.nodeValue).trim()) return false;
+            continue;
+          }
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          const tag = child.tagName.toLowerCase();
+          if (tag === "br") { found = true; continue; }
+          if (!inlineWrapperTags.has(tag) && !["ruby","rt","rp"].includes(tag)) return false;
+          if (!visit(child)) return false;
+        }
+        return true;
+      };
+      return visit(node) && found;
+    }
+    function isHeadingText(text) { return text.length > 0 && text.length <= 60 && sectionTitleRe.test(text); }
+    function isNumberedProse(text) { return /^\s*\d+\s*[、]/.test(text || ""); }
+    function isHeadingSource(node, text = textOf(node)) {
+      const tag = node.tagName?.toLowerCase() || "";
+      const centered = (tag === "p" || tag === "section") && node.getAttribute?.(centerMarker) && !hasBlockChild(node);
+      if (isNumberedProse(text)) return false;
+      return ["h1","h2","h3","h4","h5","h6"].includes(tag) || isHeadingText(text) || Boolean(centered);
+    }
+    function cleanTree(root) {
+      if (isCentered(root)) root.setAttribute(centerMarker, "1");
+      for (const node of [...root.querySelectorAll("*")]) {
+        if (removeTags.has(node.tagName.toLowerCase()) || isHidden(node)) { node.remove(); continue; }
+        if (node.tagName.toLowerCase() === "wbr") { node.remove(); continue; }
+        if (isCentered(node)) node.setAttribute(centerMarker, "1");
+        const lazySrc = node.getAttribute("data-src") || node.getAttribute("data-original");
+        if (node.tagName.toLowerCase() === "img" && !node.getAttribute("src") && lazySrc) node.setAttribute("src", lazySrc);
+        for (const attr of [...node.attributes]) {
+          const name = attr.name.toLowerCase();
+          if (name === "target" || name.startsWith("on") || (name === "href" || name === "src") && !safeUrl(name, attr.value)) node.removeAttribute(attr.name);
+        }
+      }
+      // A malformed snapshot can put a block (section/div/p) inside a styled
+      // inline wrapper.  Unwrap only those containers so normaliseParagraph
+      // can split the block instead of flattening its heading into prose.
+      for (const node of [...root.querySelectorAll("span,font,center,a,abbr,b,bdi,bdo,cite,code,del,em,i,ins,kbd,mark,q,s,samp,small,strong,sub,sup,time,u,var")]) {
+        if ([...node.querySelectorAll("*")].every(child => !isBlock(child))) continue;
+        if (node.hasAttribute("data-sigil-color")) continue;
+        const parent = node.parentNode;
+        if (!parent) continue;
+        while (node.firstChild) parent.insertBefore(node.firstChild, node);
+        parent.removeChild(node);
+      }
+      return root;
+    }
+    function makeSemantic(tag, source) { const el = document.createElement(tag); if (source?.getAttribute("lang")) el.setAttribute("lang", source.getAttribute("lang")); if (source?.getAttribute("data-sigil-color")) el.setAttribute("style", `color:${source.getAttribute("data-sigil-color")}`); return el; }
+    function appendTextContent(target, raw) {
+      const value = normaliseText(raw);
+      if (value && value.trim()) { target.append(document.createTextNode(value)); return; }
+      // Preserve a literal space between inline runs while ignoring the
+      // indentation/newlines inserted by SingleFile around elements.
+      if (raw && !/[\t\r\n\f]/.test(raw) && raw.replace(/\u00a0/g, "").trim() === "" && (target.lastChild || target.textContent.trim())) {
+        target.append(document.createTextNode(" "));
+      }
+    }
+    const unicodeLetterNumber = (() => { try { return new RegExp("[\\p{L}\\p{N}]", "u"); } catch { return /^[A-Za-z0-9]$/; } })();
+    const inlineObjectMarker = "\uFFFC";
+    const breakBoundaryTags = new Set(["audio","canvas","embed","figure","hr","iframe","img","object","table","video"]);
+    function isCjkChar(value) {
+      if (!value) return false;
+      const code = value.codePointAt(0);
+      return (code >= 0x3400 && code <= 0x4dbf) || (code >= 0x4e00 && code <= 0x9fff) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0x20000 && code <= 0x323af) || (code >= 0x3040 && code <= 0x30ff) || (code >= 0x31f0 && code <= 0x31ff) || (code >= 0xff66 && code <= 0xff9d) || (code >= 0x1100 && code <= 0x11ff) || (code >= 0x3130 && code <= 0x318f) || (code >= 0xac00 && code <= 0xd7ff);
+    }
+    function isWordChar(value) { return Boolean(value && !isCjkChar(value) && unicodeLetterNumber.test(value)); }
+    function lastVisibleChar(node) {
+      if (!node) return "";
+      if (node.nodeType === Node.TEXT_NODE) { const chars = [...(node.nodeValue || "")]; for (let index = chars.length - 1; index >= 0; index--) if (!/\s/u.test(chars[index])) return chars[index]; return ""; }
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return inlineObjectMarker;
+      for (let index = node.childNodes.length - 1; index >= 0; index--) { const value = lastVisibleChar(node.childNodes[index]); if (value) return value; }
+      return "";
+    }
+    function firstVisibleChar(node) {
+      if (!node) return "";
+      if (node.nodeType === Node.TEXT_NODE) { for (const char of [...(node.nodeValue || "")]) if (!/\s/u.test(char)) return char; return ""; }
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return inlineObjectMarker;
+      for (const child of node.childNodes) { const value = firstVisibleChar(child); if (value) return value; }
+      return "";
+    }
+    function previousVisibleChar(root, target) {
+      let current = target;
+      while (current && current !== root) {
+        for (let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) { const value = lastVisibleChar(sibling); if (value) return value; }
+        current = current.parentNode;
+      }
+      return "";
+    }
+    function nextVisibleChar(root, target) {
+      let current = target;
+      while (current && current !== root) {
+        for (let sibling = current.nextSibling; sibling; sibling = sibling.nextSibling) { const value = firstVisibleChar(sibling); if (value) return value; }
+        current = current.parentNode;
+      }
+      return "";
+    }
+    function edgeTextNode(node, direction) {
+      if (!node) return null;
+      if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ? node : null;
+      if (node.nodeType === Node.ELEMENT_NODE && breakBoundaryTags.has(node.tagName.toLowerCase())) return null;
+      const children = [...node.childNodes];
+      if (direction < 0) children.reverse();
+      for (const child of children) { const found = edgeTextNode(child, direction); if (found) return found; }
+      return null;
+    }
+    function adjacentTextNode(root, target, direction) {
+      let current = target;
+      while (current && current !== root) {
+        let sibling = direction < 0 ? current.previousSibling : current.nextSibling;
+        while (sibling) {
+          const found = edgeTextNode(sibling, direction);
+          if (found) return found;
+          sibling = direction < 0 ? sibling.previousSibling : sibling.nextSibling;
+        }
+        current = current.parentNode;
+      }
+      return null;
+    }
+    function flattenBreaks(node) {
+      for (const br of [...node.querySelectorAll("br")]) {
+        const before = previousVisibleChar(node, br), after = nextVisibleChar(node, br);
+        const cjkBoundary = isCjkChar(before) && isCjkChar(after);
+        const wordBoundary = isWordChar(before) && isWordChar(after);
+        const beforeText = adjacentTextNode(node, br, -1), afterText = adjacentTextNode(node, br, 1);
+        // A visual wrap between CJK characters joins directly; a wrap between
+        // two Latin/number runs needs one separator to remain readable.
+        if (cjkBoundary || wordBoundary) {
+          if (beforeText) beforeText.nodeValue = beforeText.nodeValue.replace(/\s+$/u, "");
+          if (afterText) afterText.nodeValue = afterText.nodeValue.replace(/^\s+/u, "");
+        }
+        if (wordBoundary) br.parentNode.insertBefore(document.createTextNode(" "), br);
+        br.remove();
+      }
+    }
+    function pruneEmptyInline(node) {
+      // Flattening a hard break can leave wrappers such as <b> </b>.  They
+      // carry no document meaning and make the generated XHTML needlessly
+      // noisy; preserve their whitespace as a separator and leave wrappers
+      // that still contain text or an image untouched.
+      for (const child of [...node.children]) {
+        pruneEmptyInline(child);
+        const tag = child.tagName.toLowerCase();
+        if (semanticTags.has(tag) && !textOf(child) && !child.querySelector("img")) {
+          // Unwrap instead of deleting so a flattened <br> can still act as
+          // the separator between the text runs on either side.
+          const parent = child.parentNode;
+          while (child.firstChild) parent.insertBefore(child.firstChild, child);
+          child.remove();
+        }
+      }
+    }
+    function appendInline(target, source) {
+      if (source.nodeType === Node.TEXT_NODE) { appendTextContent(target, source.nodeValue); return; }
+      if (source.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = source.tagName.toLowerCase();
+      if (tag === "br") { target.append(document.createElement("br")); return; }
+      if (tag === "wbr") return;
+      if (tag === "img") { const img = document.createElement("img"), src = source.getAttribute("src") || source.getAttribute("data-src") || source.getAttribute("data-original"); if (src && safeUrl("src", src)) img.setAttribute("src", src); for (const attr of ["alt","title","width","height"]) if (source.hasAttribute(attr)) img.setAttribute(attr, source.getAttribute(attr)); if (img.getAttribute("src")) target.append(img); return; }
+      let outputTag = semanticTags.has(tag) ? tag : "";
+      if (source.getAttribute("data-sigil-color")) outputTag = "span";
+      if (!outputTag && tag === "span") { const weight = styleValue(source, "font-weight"), fontStyle = styleValue(source, "font-style"), decoration = styleValue(source, "text-decoration"); if (/bold|[6-9]00/.test(weight)) outputTag = "strong"; else if (/italic|oblique/.test(fontStyle)) outputTag = "em"; else if (/underline/.test(decoration)) outputTag = "u"; }
+      if (outputTag) {
+        const wrapper = makeSemantic(outputTag, source);
+        for (const child of source.childNodes) appendInline(wrapper, child);
+        const sourceText = source.textContent || "";
+        if (!wrapper.childNodes.length && source.childNodes.length && !/[\t\r\n\f]/.test(sourceText) && sourceText.replace(/\u00a0/g, "").trim() === "") wrapper.append(document.createTextNode(" "));
+        target.append(wrapper);
+        return;
+      }
+      for (const child of source.childNodes) appendInline(target, child);
+    }
+    function trimEdges(node) {
+      let first = node.firstChild; while (first && first.nodeType === Node.TEXT_NODE && !first.nodeValue.trim()) { node.removeChild(first); first = node.firstChild; } if (first?.nodeType === Node.TEXT_NODE) first.nodeValue = first.nodeValue.replace(/^\s+/, "");
+      let last = node.lastChild; while (last && last.nodeType === Node.TEXT_NODE && !last.nodeValue.trim()) { node.removeChild(last); last = node.lastChild; } if (last?.nodeType === Node.TEXT_NODE) last.nodeValue = last.nodeValue.replace(/\s+$/, "");
+    }
+    function makeSpacer() { const spacer = document.createElement("div"); spacer.className = "spacer"; spacer.textContent = "\u00a0"; return spacer; }
+    function finishParagraph(paragraph, source) {
+      if (onlyBreaks(paragraph)) return [makeSpacer()];
+      if (state.processType !== "javbus_forum") flattenBreaks(paragraph);
+      pruneEmptyInline(paragraph);
+      trimEdges(paragraph);
+      if (!hasMeaningful(paragraph)) return [];
+      if (isHeadingSource(source, textOf(paragraph))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of [...paragraph.childNodes]) heading.append(child); trimEdges(heading); return [heading]; }
+      paragraph.className = "body-text";
+      return [paragraph];
+    }
+    function normaliseParagraph(node) {
+      // An empty paragraph is not evidence of a line break.  SingleFile
+      // exports often leave empty shells around nested blocks; turning every
+      // shell into a spacer creates artificial vertical breaks in the XHTML.
+      if (!hasMeaningful(node) && !onlyBreaks(node)) return [];
+      const output = [];
+      let paragraph = document.createElement("p");
+      const flush = () => { output.push(...finishParagraph(paragraph, node)); paragraph = document.createElement("p"); };
+      for (const child of [...node.childNodes]) { if (isBlock(child)) { flush(); output.push(...normaliseBlock(child)); continue; } appendInline(paragraph, child); }
+      flush();
+      return output;
+    }
+    function normaliseContainer(node) {
+      const output = [];
+      let paragraph = document.createElement("p");
+      const flush = () => { output.push(...finishParagraph(paragraph, node)); paragraph = document.createElement("p"); };
+      for (const child of [...node.childNodes]) { if (isBlock(child)) { flush(); output.push(...normaliseBlock(child)); continue; } appendInline(paragraph, child); }
+      flush();
+      return output;
+    }
+    function normaliseBlock(node) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === "p") return normaliseParagraph(node);
+      if (tag === "section") { if (onlyBreaks(node)) return [makeSpacer()]; if (!hasBlockChild(node) && !isNumberedProse(textOf(node)) && (isHeadingText(textOf(node)) || isCentered(node))) { const heading = document.createElement("h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; } return normaliseContainer(node); }
+      if (["h1","h2","h3","h4","h5","h6"].includes(tag)) { if (isNumberedProse(textOf(node))) { const paragraph = document.createElement("p"); for (const child of node.childNodes) appendInline(paragraph, child); return finishParagraph(paragraph, node); } const heading = document.createElement(tag === "h1" ? "h1" : "h2"); heading.className = "section-title"; for (const child of node.childNodes) appendInline(heading, child); trimEdges(heading); return hasMeaningful(heading) ? [heading] : []; }
+      if (tag === "img") { const paragraph = document.createElement("p"); paragraph.className = "image"; appendInline(paragraph, node); return [paragraph]; }
+      if (tag === "br" || tag === "wbr") return [makeSpacer()];
+      if (tag === "hr") { const hr = document.createElement("hr"); return [hr]; }
+      if (hasBlockChild(node)) return normaliseContainer(node);
+      if (!hasMeaningful(node)) return [];
+      const paragraph = document.createElement("p"); for (const child of node.childNodes) appendInline(paragraph, child); return finishParagraph(paragraph, node);
+    }
+    function normaliseArticle(article, title, metadata = []) {
+      const cleaned = cleanTree(article.cloneNode(true)), blocks = normaliseContainer(cleaned), compact = [];
+      for (const block of blocks) { if (block.classList?.contains("spacer") && compact.at(-1)?.classList?.contains("spacer")) continue; compact.push(block); }
+      if (processType === "javbus_forum") {
+        const separated = [];
+        for (const block of compact) {
+          if (block.tagName?.toLowerCase() !== "p" || !block.querySelector("br")) { separated.push(block); continue; }
+          let paragraph = block.cloneNode(false);
+          const flush = () => { if (hasMeaningful(paragraph)) separated.push(paragraph); paragraph = block.cloneNode(false); };
+          for (const child of [...block.childNodes]) {
+            if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === "br") { flush(); separated.push(makeSpacer()); }
+            else paragraph.append(child.cloneNode(true));
+          }
+          flush();
+        }
+        compact.splice(0, compact.length, ...separated);
+      }
+      for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { if (processType !== "javbus_forum") flattenBreaks(block); pruneEmptyInline(block); }
+      const hasVisibleTitle = compact.some(node => ["h1","h2"].includes(node.tagName?.toLowerCase()) && textOf(node) === title);
+      if (title && !hasVisibleTitle) { const heading = document.createElement("h1"); heading.textContent = title; compact.unshift(heading); }
+      if (metadata.length) { const meta = document.createElement("p"); meta.className = "article-meta"; meta.textContent = metadata.join(" · "); compact.splice(compact[0]?.tagName?.toLowerCase() === "h1" ? 1 : 0, 0, meta); }
+      let headingIndex = 0; for (const node of compact) if (node.tagName?.toLowerCase() === "h2") node.id = `section-${++headingIndex}`;
+      for (const node of compact) { node.removeAttribute(centerMarker); for (const marked of node.querySelectorAll(`[${centerMarker}]`)) marked.removeAttribute(centerMarker); }
+      const firstParagraph = compact.find(node => node.tagName?.toLowerCase() === "p"); if (firstParagraph && firstParagraph.querySelector("em, i")) firstParagraph.classList.add("lead");
+      const preview = document.createElement("div"); compact.forEach(node => preview.append(node.cloneNode(true)));
+      return { blocks: compact, preview, paragraphs: compact.filter(node => node.tagName?.toLowerCase() === "p" && !node.classList.contains("article-meta")).length };
+    }
+    function selectArticle(doc, processType = "wechat") {
+      if (processType === "javbus") return selectJavbusArticle(doc);
+      if (processType === "javbus_forum") return selectJavbusForumArticle(doc);
+      // Newer Notion/SingleFile exports keep page properties and page blocks
+      // under the same main element. Prefer the dedicated page-content node
+      // so UI chrome such as “more properties” and “Add 标签” never enters
+      // the exported XHTML. Older captures without this class still use the
+      // existing fallbacks below.
+      if (processType === "notion") {
+        const pageContent = doc.querySelector(".notion-page-content");
+        if (pageContent) return pageContent;
+      }
+      const candidate = doc.querySelector("#js_content");
+      if (candidate && (candidate.children.length || textOf(candidate))) return candidate;
+      if (candidate?.parentElement) {
+        // A malformed snapshot can put <p> inside <h2 id="js_content" >.
+        // DOMParser closes the heading and leaves the real blocks after an
+        // empty placeholder; reassemble those following siblings.
+        const repaired = doc.createElement("div");
+        for (let sibling = candidate.nextElementSibling; sibling; sibling = sibling.nextElementSibling) repaired.append(sibling.cloneNode(true));
+        if (repaired.children.length) return repaired;
+      }
+      return candidate || doc.querySelector("article") || doc.querySelector("main") || doc.querySelector("[role='main']") || doc.body;
+    }
+    function stripNotionPropertyPanel(root) {
+      for (const table of [...root.querySelectorAll('[role="table"]')]) {
+        const propertyLabels = new Set(Object.values(notionPropertyAliases).flat().map(normaliseNotionLabel));
+        const rowLabels = [...table.querySelectorAll('[role="row"]')].map(row => {
+          const cell = row.querySelector('[role="cell"]');
+          return cell ? normaliseNotionLabel(textOf(cell)) : "";
+        });
+        if (rowLabels.some(label => propertyLabels.has(label))) table.remove();
+      }
+      const chromeRe = /^(?:其他\s*\d+\s*个属性|更多属性|\d+\s*more\s*properties|关联|添加\s*标签|add\s*标签)$/i;
+      for (const node of [...root.querySelectorAll('.notion-page-block')]) if (chromeRe.test(textOf(node))) node.remove();
+      for (const node of [...root.querySelectorAll('.notion-topbar,.notion-sidebar')]) node.remove();
+      return root;
+    }
+    function imageReport(root) {
+      const images = [...root.querySelectorAll("img")], report = { images: images.length, embedded: 0, external: 0, missing: 0 };
+      for (const image of images) {
+        const src = (image.getAttribute("src") || "").trim().toLowerCase();
+        if (!src) report.missing++;
+        else if (src.startsWith("data:image/")) report.embedded++;
+        else if (src.startsWith("http://") || src.startsWith("https://")) report.external++;
+      }
+      return report;
+    }
+    async function embedExternalImages(root) {
+      const images = [...root.querySelectorAll("img")];
+      await Promise.all(images.map(async image => {
+        const source = (image.getAttribute("src") || "").trim();
+        if (!/^https?:\/\//i.test(source)) return;
+        try {
+          let response;
+          try {
+            response = await fetch(source, { mode: "cors", credentials: "omit" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          } catch {
+            // Some image hosts serve the original file without CORS headers.
+            // Retry through raw-byte image proxies so the downloaded XHTML can
+            // still contain the original image bytes instead of an external URL.
+            const proxies = [
+              `https://api.allorigins.win/raw?url=${encodeURIComponent(source)}`,
+              `https://images.weserv.nl/?url=${encodeURIComponent(source)}`
+            ];
+            let lastError;
+            for (const proxy of proxies) {
+              try {
+                response = await fetch(proxy, { mode: "cors", credentials: "omit" });
+                if (response.ok) break;
+                lastError = new Error(`代理 HTTP ${response.status}`);
+              } catch (error) { lastError = error; }
+            }
+            if (!response?.ok) throw lastError || new Error("代理下载失败");
+          }
+          const blob = await response.blob();
+          const guessedType = /\.(?:jpe?g)(?:[?#]|$)/i.test(source) ? "image/jpeg" : /\.png(?:[?#]|$)/i.test(source) ? "image/png" : /\.webp(?:[?#]|$)/i.test(source) ? "image/webp" : "";
+          const imageType = blob.type.startsWith("image/") ? blob.type : guessedType;
+          if (!imageType) throw new Error("响应不是图片");
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error("读取图片失败"));
+            reader.readAsDataURL(blob);
+          });
+          image.setAttribute("src", dataUrl.replace(/^data:[^;,]+/, `data:${imageType}`));
+        } catch (error) {
+          // Keep the original URL when the image host blocks browser CORS.
+          // The report will expose any remaining external images after conversion.
+        }
+      }));
+      return root;
+    }
+    async function processJavbusEmbeddedImages(root) {
+      await embedExternalImages(root);
+      const remaining = [...root.querySelectorAll("img")].filter(image => /^https?:\/\//i.test((image.getAttribute("src") || "").trim()));
+      if (remaining.length) throw new Error(`样品图片内嵌失败：仍有 ${remaining.length} 张外链图片`);
+      return root;
+    }
+    async function convertHtml(raw, fileName, processType = state.processType, preserveColors = state.preserveColors) {
+      const doc = new DOMParser().parseFromString(raw, "text/html"), article = selectArticle(doc, processType); if (!article) throw new Error("未找到可转换的正文区域");
+      const rawBaseTitle = normaliseText(doc.querySelector("#activity-name")?.textContent || doc.title || "Article").trim() || "Article";
+      const baseTitle = processType === "javbus" ? javbusTitle(doc) : processType === "javbus_forum" ? javbusForumTitle(doc) : processType === "notion" ? cleanNotionTitle(rawBaseTitle) : rawBaseTitle;
+      const notionAuthor = processType === "notion" ? notionProperty(doc, "作者") : "";
+      const notionPublishDate = processType === "notion" ? notionDate(notionProperty(doc, "发布时间")) : "";
+      const publishDate = processType === "javbus" ? javbusDate(doc) : processType === "wechat" ? extractPublishDate(doc) : notionPublishDate;
+      const title = processType === "javbus" || processType === "javbus_forum" ? baseTitle : publishDate ? `${publishDate}_${baseTitle}` : baseTitle;
+      const metadata = processType === "javbus" || processType === "javbus_forum" ? [] : processType === "wechat" ? extractArticleMeta(doc) : [notionAuthor, notionProperty(doc, "发布时间")].filter(Boolean), account = processType === "wechat" ? extractAccountName(doc) : "", author = processType === "wechat" ? extractAuthor(doc) : notionAuthor, articleForNormalise = processType === "notion" ? stripNotionPropertyPanel(article.cloneNode(true)) : article;
+      if (processType === "javbus" || processType === "javbus_forum") simplifyJavbusTree(articleForNormalise);
+      if (processType === "notion") cleanNotionHeadingSuffix(articleForNormalise);
+      if (preserveColors) markColorAnnotations(articleForNormalise);
+      const normalised = normaliseArticle(articleForNormalise, processType === "javbus_forum" ? "" : title, metadata);
+      if (processType === "notion") {
+        const rawDate = notionProperty(doc, "发布时间"), dateLabels = new Set([rawDate, notionPublishDate]);
+        normalised.blocks = normalised.blocks.flatMap(block => {
+          const blockText = textOf(block), tag = block.tagName?.toLowerCase();
+          // Notion/SingleFile exports are inconsistent: the page title and
+          // property date may arrive as h1/h2, p, or a layout div after
+          // normalisation.  Match the exact block text rather than relying
+          // on the source tag so the duplicate title can never survive.
+          if (blockText === baseTitle) return [];
+          if (dateLabels.has(blockText)) {
+            if (tag === "p") { block.className = "body-text"; return [block]; }
+            const paragraph = document.createElement("p"); for (const child of [...block.childNodes]) paragraph.append(child); paragraph.className = "body-text"; return [paragraph];
+          }
+          return [block];
+        });
+      }
+      const ns = "http://www.w3.org/1999/xhtml", xml = document.implementation.createDocument(ns, "html", null), root = xml.documentElement; root.setAttribute("xmlns", ns);
+      const head = xml.createElementNS(ns, "head"), meta = xml.createElementNS(ns, "meta"); meta.setAttribute("http-equiv", "Content-Type"); meta.setAttribute("content", "application/xhtml+xml; charset=UTF-8"); head.append(meta);
+      const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
+      const body = xml.createElementNS(ns, "body"); for (const block of normalised.blocks) body.append(xml.importNode(block, true)); root.append(body);
+      if (processType === "javbus") await processJavbusEmbeddedImages(body);
+      // Guard the contract of the reflow converter: prose must not retain
+      // hard line-break elements or source layout dimensions.  Image sizes
+      // remain allowed because the stylesheet caps them at the page width.
+      const hardBreak = processType === "javbus_forum" ? null : [...body.querySelectorAll("br")].find(element => !element.closest("pre"));
+      if (hardBreak) throw new Error("正文仍包含硬换行，未生成文件");
+      for (const element of body.querySelectorAll("[style],[width],[height]")) {
+        const tag = element.tagName.toLowerCase();
+        const style = element.getAttribute("style") || "";
+        const colorOnly = /^\s*color\s*:\s*[^;]+\s*$/i.test(style);
+        if ((element.hasAttribute("style") && !colorOnly) || ((element.hasAttribute("width") || element.hasAttribute("height")) && tag !== "img")) {
+          throw new Error("正文仍包含网页布局属性，未生成文件");
+        }
+      }
+      const serialized = new XMLSerializer().serializeToString(xml), output = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n' + serialized;
+      const check = new DOMParser().parseFromString(serialized, "application/xhtml+xml"); if (check.querySelector("parsererror")) throw new Error("生成的 XHTML 未通过 XML 检查");
+      const filenameParts = processType === "javbus" ? [javbusActorPrefix(doc), javbusFilenameDate(publishDate), `${baseTitle} - JavBus`].filter(Boolean) : processType === "javbus_forum" ? [`JavBus论坛`, baseTitle].filter(Boolean) : processType === "notion" ? [publishDate, author, baseTitle].filter(Boolean) : [publishDate, account, author, baseTitle].filter(Boolean);
+      const outputStem = safeFileStem(filenameParts.join("_"));
+      const report = imageReport(body);
+      return { output, title, paragraphs: normalised.paragraphs, name: `${outputStem}-Sigil.xhtml`, preview: normalised.preview, report, author, publishDate, baseTitle, preserveColors, processType };
+    }
+    function addFiles(fileList) { let added = 0, rejected = 0; for (const file of [...fileList]) { if (!/\.html?$/i.test(file.name)) { rejected++; continue; } const duplicate = state.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified); if (!duplicate) { state.items.push({ id: `${Date.now()}-${Math.random()}`, file, status: "待转换", output: null, error: "" }); added++; } } renderQueue(); if (rejected) setStatus(`已添加 ${added} 个文件，忽略 ${rejected} 个非 HTML 文件。`, "error"); else if (added) setStatus(`已添加 ${added} 个文件，可以开始批量转换。`); }
+    function renderQueue() { const body = $("queueBody"); body.replaceChildren(); if (!state.items.length) body.innerHTML = '<tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr>'; for (const item of state.items) { const row = document.createElement("tr"), name = document.createElement("td"), size = document.createElement("td"), status = document.createElement("td"), action = document.createElement("td"); name.className = "file-cell"; name.title = item.file.name; name.textContent = item.file.name; size.className = "size-cell"; size.textContent = formatSize(item.file.size); const badge = document.createElement("span"); badge.className = `badge ${item.status === "转换中" ? "processing" : item.status === "成功" ? "success" : item.status === "失败" ? "failed" : ""}`; badge.textContent = item.status; status.append(badge); if (item.status === "失败") status.title = item.error; if (item.output) { const btn = document.createElement("button"); btn.className = "ghost"; btn.dataset.action = "download"; btn.dataset.id = item.id; btn.textContent = "下载"; action.append(btn); } row.append(name, size, status, action); body.append(row); } const success = state.items.filter(item => item.output).length, failed = state.items.filter(item => item.status === "失败").length; $("summary").textContent = `${state.items.length} 个文件 · ${success} 个成功${failed ? ` · ${failed} 个失败` : ""}`; $("convertBtn").disabled = !state.items.length || state.converting || state.items.every(item => item.output); $("clearBtn").disabled = !state.items.length || state.converting; $("downloadAllBtn").disabled = !success || state.converting; }
+    function download(item) { const url = URL.createObjectURL(new Blob([item.output.output], { type: "application/xhtml+xml;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = item.output.name; a.style.display = "none"; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || (item.output.processType === "javbus" || item.output.processType === "javbus_forum" ? "JavBus" : "未识别")}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || (!item.output.author && item.output.processType !== "javbus" && item.output.processType !== "javbus_forum") || (!item.output.publishDate && item.output.processType !== "javbus_forum") ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
+    async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = state.processType === "javbus" ? "转换并内嵌图片" : "转换中"; renderQueue(); try { item.output = await convertHtml(await item.file.text(), item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
+    $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
+    function setEditorMode(active, focusTab = false) {
+      document.querySelectorAll(".converter-panel").forEach(panel => panel.classList.toggle("hidden-panel", active));
+      $("editorPanel").classList.toggle("visible", active);
+      if (active && focusTab) $("tab-editor").focus();
+    }
+    function setProcessType(nextType, focusTab = false) {
+      if (nextType === "editor") {
+        for (const tab of document.querySelectorAll(".mode-tab")) {
+          const active = tab.dataset.type === "editor";
+          tab.setAttribute("aria-selected", active ? "true" : "false");
+          tab.tabIndex = active ? 0 : -1;
+        }
+        setEditorMode(true, focusTab);
+        $("modeHint").textContent = "打开 XHTML 后直接编辑源码，右侧预览，完成后导出下载。";
+        return;
+      }
+      if (!["wechat", "notion", "javbus", "javbus_forum"].includes(nextType)) return;
+      setEditorMode(false);
+      state.processType = nextType;
+      for (const tab of document.querySelectorAll(".mode-tab")) {
+        const active = tab.dataset.type === nextType;
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+        tab.tabIndex = active ? 0 : -1;
+        if (active && focusTab) tab.focus();
+      }
+      $("modeHint").textContent = nextType === "wechat" ? "按公众号字段提取日期、公众号名和作者，用于文件命名。" : nextType === "notion" ? "按 Notion 属性提取发布时间和作者，用页面标题作为首页名称。" : nextType === "javbus" ? "提取 JavBus 主图和影片资料，转换完成后再将样品图片外链下载并内嵌，繁体字转为简体字。" : "提取 JavBus 论坛主题和第一篇主帖，过滤后续回复与论坛控件。";
+      for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; }
+      $("resultPanel").classList.remove("visible"); state.current = null; renderQueue();
+      setStatus(state.items.length ? "处理类型已切换，请重新转换文件。" : "等待添加文件");
+    }
+    document.querySelectorAll(".mode-tab").forEach(tab => {
+      tab.addEventListener("click", () => setProcessType(tab.dataset.type));
+      tab.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll(".mode-tab")];
+        const index = tabs.indexOf(tab);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        setProcessType(tabs[next].dataset.type, true);
+      });
+    });
+    $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
+    function bindEditablePreview() {
+      const frame = $("xhtmlPreview"), previewDocument = frame.contentDocument;
+      if (!previewDocument?.body) return;
+      previewDocument.body.contentEditable = "true";
+      previewDocument.body.spellcheck = false;
+      previewDocument.body.addEventListener("input", () => {
+        const root = previewDocument.documentElement.cloneNode(true);
+        root.querySelectorAll("[contenteditable]").forEach(node => node.removeAttribute("contenteditable"));
+        $("xhtmlSource").value = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n${new XMLSerializer().serializeToString(root)}`;
+        $("editorDownload").disabled = false;
+        setStatus("预览已修改，源码已同步。", "ok");
+      });
+    }
+    function applyEditorImageFormat(source) {
+      if (!source.trim()) return source;
+      const rule = "<style id=\"sigil-editor-format\">img{display:block!important;max-width:100%;height:auto;margin:7px auto!important}</style>";
+      return source.includes("id=\"sigil-editor-format\"") ? source : (source.includes("</head>") ? source.replace(/<\/head>/i, `${rule}</head>`) : `${rule}${source}`);
+    }
+    function updateEditorPreview() {
+      const source = $("xhtmlSource").value;
+      const previewSource = source ? applyEditorImageFormat(source) : "<p style='font-family:sans-serif;color:#687583;padding:16px'>打开或输入 XHTML 后会在这里预览。</p>";
+      $("xhtmlPreview").srcdoc = previewSource;
+      $("xhtmlPreview").addEventListener("load", bindEditablePreview, { once: true });
+      $("editorDownload").disabled = !source.trim();
+    }
+    $("xhtmlInput").addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      $("xhtmlSource").value = applyEditorImageFormat(await file.text());
+      $("xhtmlName").value = /\.x?html?$/i.test(file.name) ? file.name.replace(/\.(?:xhtml|html?)$/i, "") + ".xhtml" : file.name + ".xhtml";
+      updateEditorPreview();
+      setStatus(`已打开 ${file.name}，可以编辑后导出。`, "ok");
+      event.target.value = "";
+    });
+    $("xhtmlSource").addEventListener("input", updateEditorPreview);
+    $("editorClear").addEventListener("click", () => { $("xhtmlSource").value = ""; $("xhtmlName").value = "edited-Sigil.xhtml"; updateEditorPreview(); });
+    $("editorDownload").addEventListener("click", () => {
+      const name = ($("xhtmlName").value.trim() || "edited-Sigil.xhtml").replace(/[\\/:*?"<>|]+/g, "_").replace(/\.html?$/i, ".xhtml");
+      const blob = new Blob([applyEditorImageFormat($("xhtmlSource").value)], { type: "application/xhtml+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = name.endsWith(".xhtml") ? name : `${name}.xhtml`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus(`已导出 ${link.download}。`, "ok");
+    });
+    $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
+    $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
+  </script>
+</body>
+</html>
