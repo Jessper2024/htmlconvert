@@ -264,6 +264,19 @@ a { color: inherit; }
       const fragment = doc.createElement("div"), cover = row.querySelector(".screencap"), info = row.querySelector(".info");
       if (cover) fragment.append(cover.cloneNode(true));
       if (info) for (const paragraph of info.querySelectorAll("p")) fragment.append(paragraph.cloneNode(true));
+      const sampleWaterfall = container?.querySelector("#sample-waterfall");
+      const sampleImages = sampleWaterfall ? [...sampleWaterfall.querySelectorAll("img")] : [];
+      if (sampleImages.length) {
+        const heading = doc.createElement("h2");
+        heading.textContent = "样品图像";
+        fragment.append(heading);
+        for (const image of sampleImages) {
+          const paragraph = doc.createElement("p");
+          paragraph.className = "image";
+          paragraph.append(image.cloneNode(true));
+          fragment.append(paragraph);
+        }
+      }
       return fragment.children.length ? mergeJavbusMetadata(fragment) : null;
     }
     function javbusForumTitle(doc) {
