@@ -619,7 +619,7 @@ a { color: inherit; }
     function normaliseArticle(article, title, metadata = []) {
       const cleaned = cleanTree(article.cloneNode(true)), blocks = normaliseContainer(cleaned), compact = [];
       for (const block of blocks) { if (block.classList?.contains("spacer") && compact.at(-1)?.classList?.contains("spacer")) continue; compact.push(block); }
-      for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { flattenBreaks(block); pruneEmptyInline(block); }
+      for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { if (processType !== "javbus_forum") flattenBreaks(block); pruneEmptyInline(block); }
       const hasVisibleTitle = compact.some(node => ["h1","h2"].includes(node.tagName?.toLowerCase()) && textOf(node) === title);
       if (title && !hasVisibleTitle) { const heading = document.createElement("h1"); heading.textContent = title; compact.unshift(heading); }
       if (metadata.length) { const meta = document.createElement("p"); meta.className = "article-meta"; meta.textContent = metadata.join(" · "); compact.splice(compact[0]?.tagName?.toLowerCase() === "h1" ? 1 : 0, 0, meta); }
@@ -766,7 +766,7 @@ a { color: inherit; }
       // Guard the contract of the reflow converter: prose must not retain
       // hard line-break elements or source layout dimensions.  Image sizes
       // remain allowed because the stylesheet caps them at the page width.
-      const hardBreak = [...body.querySelectorAll("br")].find(element => !element.closest("pre"));
+      const hardBreak = processType === "javbus_forum" ? null : [...body.querySelectorAll("br")].find(element => !element.closest("pre"));
       if (hardBreak) throw new Error("正文仍包含硬换行，未生成文件");
       for (const element of body.querySelectorAll("[style],[width],[height]")) {
         const tag = element.tagName.toLowerCase();
