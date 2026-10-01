@@ -576,7 +576,7 @@ a { color: inherit; }
     function makeSpacer() { const spacer = document.createElement("div"); spacer.className = "spacer"; spacer.textContent = "\u00a0"; return spacer; }
     function finishParagraph(paragraph, source) {
       if (onlyBreaks(paragraph)) return [makeSpacer()];
-      flattenBreaks(paragraph);
+      if (state.processType !== "javbus_forum") flattenBreaks(paragraph);
       pruneEmptyInline(paragraph);
       trimEdges(paragraph);
       if (!hasMeaningful(paragraph)) return [];
