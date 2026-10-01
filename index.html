@@ -72,6 +72,14 @@
     .preview p.image { text-align:center; text-indent:0; }
     .preview .spacer { display:block; height:7px; }
     .preview img { max-width:100%; height:auto; }
+    .editor-panel { display:none; margin-top:20px; padding:20px; }
+    .editor-panel.visible { display:block; }
+    .editor-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:0 0 12px; }
+    .editor-toolbar input { min-width:260px; flex:1; padding:10px 11px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+    #xhtmlSource { min-height:520px; margin-top:0; }
+    .editor-preview { min-height:220px; margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+    .editor-preview iframe { display:block; width:100%; min-height:420px; border:0; background:#fff; }
+    .hidden-panel { display:none !important; }
     details { margin-top:15px; }
     summary { color:var(--muted); cursor:pointer; font-size:13px; }
     textarea { display:block; width:100%; min-height:130px; margin-top:8px; padding:9px; border:1px solid var(--line); border-radius:6px; resize:vertical; color:#384652; background:#fafcfd; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -82,15 +90,16 @@
 <body>
   <main>
     <header><div><p class="eyebrow">SINGLEFILE → REFLOW XHTML</p><h1>HTML 格式转换器</h1></div><p class="lead">批量清理 SingleFile 保存的网页文档，生成可导入 Sigil 的自然重排 XHTML。正文顶格左对齐、没有首行缩进，窗口变宽或变窄时由阅读器自动换行；文件只在本机浏览器中处理。</p></header>
-    <section class="panel import-panel">
-      <div class="mode-control"><span id="processTypeLabel" class="mode-label">处理类型</span><div id="processType" class="mode-tabs" role="tablist" aria-label="处理类型"><button class="mode-tab" id="tab-wechat" type="button" role="tab" aria-selected="true" aria-controls="panel-wechat" data-type="wechat" tabindex="0">微信公众号文章</button><button class="mode-tab" id="tab-notion" type="button" role="tab" aria-selected="false" aria-controls="panel-notion" data-type="notion" tabindex="-1">Notion 文档</button><button class="mode-tab" id="tab-javbus" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus" data-type="javbus" tabindex="-1">JavBus 页面</button><button class="mode-tab" id="tab-javbus-forum" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus-forum" data-type="javbus_forum" tabindex="-1">JavBus 论坛帖子</button></div><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
+    <section class="panel import-panel converter-panel">
+      <div class="mode-control"><span id="processTypeLabel" class="mode-label">处理类型</span><div id="processType" class="mode-tabs" role="tablist" aria-label="处理类型"><button class="mode-tab" id="tab-wechat" type="button" role="tab" aria-selected="true" aria-controls="panel-wechat" data-type="wechat" tabindex="0">微信公众号文章</button><button class="mode-tab" id="tab-notion" type="button" role="tab" aria-selected="false" aria-controls="panel-notion" data-type="notion" tabindex="-1">Notion 文档</button><button class="mode-tab" id="tab-javbus" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus" data-type="javbus" tabindex="-1">JavBus 页面</button><button class="mode-tab" id="tab-javbus-forum" type="button" role="tab" aria-selected="false" aria-controls="panel-javbus-forum" data-type="javbus_forum" tabindex="-1">JavBus 论坛帖子</button><button class="mode-tab" id="tab-editor" type="button" role="tab" aria-selected="false" aria-controls="panel-editor" data-type="editor" tabindex="-1">XHTML 编辑器</button></div><label class="color-option"><input id="preserveColors" type="checkbox">保留原文颜色</label><span class="mode-hint" id="modeHint">按公众号字段提取日期、公众号名和作者，用于文件命名。</span></div>
       <label class="drop" id="dropZone" for="fileInput"><strong>选择或拖入多个 SingleFile HTML 文件</strong><span>支持 .html、.htm；可一次添加多个文件，原文件不会被修改</span></label>
       <input id="fileInput" type="file" accept=".html,.htm,text/html" multiple>
       <div class="toolbar"><button id="convertBtn" disabled>批量转换</button><button class="secondary" id="clearBtn" type="button" disabled>清空列表</button><button class="secondary" id="downloadAllBtn" type="button" disabled>下载全部 XHTML</button></div>
       <p class="status" id="status">等待添加文件</p>
     </section>
-    <section class="panel queue-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
-    <section class="panel result-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p><p class="report" id="resultReport"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
+    <section class="panel queue-panel converter-panel"><div class="queue-head"><h2>转换队列</h2><span class="summary" id="summary">0 个文件</span></div><div class="table-wrap"><table><thead><tr><th>文件</th><th>大小</th><th>状态</th><th>操作</th></tr></thead><tbody id="queueBody"><tr><td class="empty" colspan="4">添加文件后会显示在这里</td></tr></tbody></table></div></section>
+    <section class="panel result-panel converter-panel" id="resultPanel"><div class="result-head"><div><h2 id="resultTitle">转换结果</h2><p class="meta" id="resultMeta"></p><p class="report" id="resultReport"></p></div><button id="downloadBtn" disabled>下载 XHTML</button></div><div class="preview" id="preview"></div><details><summary>查看生成文件的开头</summary><textarea id="sourcePreview" readonly></textarea></details></section>
+    <section class="panel editor-panel" id="editorPanel"><div class="result-head"><div><h2>XHTML 编辑器</h2><p class="meta">打开已有 XHTML，直接编辑源码，实时预览后下载修改后的文件。</p></div><label class="drop" for="xhtmlInput" style="padding:10px 14px"><strong>打开 XHTML</strong><span>选择 .xhtml 或 .html 文件</span></label></div><input id="xhtmlInput" type="file" accept=".xhtml,.html,.htm,application/xhtml+xml,text/html" style="display:none"><div class="editor-toolbar"><input id="xhtmlName" type="text" value="edited-Sigil.xhtml" aria-label="导出文件名"><button id="editorDownload" disabled>导出 XHTML</button><button class="secondary" id="editorClear" type="button">清空</button></div><textarea id="xhtmlSource" spellcheck="false" placeholder="打开 XHTML 后，源码会显示在这里。你可以直接编辑。"></textarea><div class="editor-preview"><iframe id="xhtmlPreview" title="XHTML 实时预览"></iframe></div></section>
     <footer>输出是供 Sigil 后续编辑和生成 EPUB 的单章 XHTML，不是 EPUB 压缩包。正文顶格左对齐，视觉折行不会被写成硬换行；阅读器会按当前页面宽度自然换行，空白段用间距表示。批量下载可能需要允许浏览器进行多次下载。</footer>
   </main>
   <script>
@@ -774,8 +783,24 @@ a { color: inherit; }
     function showResult(item) { if (!item.output) return; state.current = item; const report = item.output.report; $("resultTitle").textContent = item.output.name; $("resultMeta").textContent = `${item.output.title} · ${item.output.paragraphs} 个正文段落 · ${formatSize(new Blob([item.output.output]).size)}`; const fields = [`日期：${item.output.publishDate || "未识别"}`, `作者：${item.output.author || (item.output.processType === "javbus" || item.output.processType === "javbus_forum" ? "JavBus" : "未识别")}`, `图片：${report.images} 张（内嵌 ${report.embedded}，外链 ${report.external}${report.missing ? `，缺少地址 ${report.missing}` : ""}）`, `颜色：${item.output.preserveColors ? "已保留" : "未保留"}`]; $("resultReport").textContent = fields.join("　"); $("resultReport").className = `report${report.external || report.missing || (!item.output.author && item.output.processType !== "javbus" && item.output.processType !== "javbus_forum") || (!item.output.publishDate && item.output.processType !== "javbus_forum") ? " warning" : ""}`; $("preview").replaceChildren(item.output.preview.cloneNode(true)); $("sourcePreview").value = item.output.output.slice(0, 5000); $("downloadBtn").disabled = false; $("resultPanel").classList.add("visible"); }
     async function convertAll() { state.converting = true; renderQueue(); let success = 0; for (const item of state.items) { if (item.output) { success++; continue; } item.status = "转换中"; renderQueue(); try { item.output = await convertHtml(await item.file.text(), item.file.name, state.processType, state.preserveColors); item.status = "成功"; success++; showResult(item); } catch (error) { item.status = "失败"; item.error = error.message; } renderQueue(); } state.converting = false; renderQueue(); const failed = state.items.length - success; setStatus(failed ? `转换完成：${success} 个成功，${failed} 个失败。失败原因可悬停查看。` : `全部转换完成：${success} 个文件已通过 XML 检查。`, failed ? "error" : "ok"); }
     $("fileInput").addEventListener("change", event => { addFiles(event.target.files); event.target.value = ""; }); const zone = $("dropZone"); ["dragenter", "dragover"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => zone.addEventListener(type, event => { event.preventDefault(); zone.classList.remove("dragover"); })); zone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
+    function setEditorMode(active, focusTab = false) {
+      document.querySelectorAll(".converter-panel").forEach(panel => panel.classList.toggle("hidden-panel", active));
+      $("editorPanel").classList.toggle("visible", active);
+      if (active && focusTab) $("tab-editor").focus();
+    }
     function setProcessType(nextType, focusTab = false) {
+      if (nextType === "editor") {
+        for (const tab of document.querySelectorAll(".mode-tab")) {
+          const active = tab.dataset.type === "editor";
+          tab.setAttribute("aria-selected", active ? "true" : "false");
+          tab.tabIndex = active ? 0 : -1;
+        }
+        setEditorMode(true, focusTab);
+        $("modeHint").textContent = "打开 XHTML 后直接编辑源码，右侧预览，完成后导出下载。";
+        return;
+      }
       if (!["wechat", "notion", "javbus", "javbus_forum"].includes(nextType)) return;
+      setEditorMode(false);
       state.processType = nextType;
       for (const tab of document.querySelectorAll(".mode-tab")) {
         const active = tab.dataset.type === nextType;
@@ -800,6 +825,30 @@ a { color: inherit; }
       });
     });
     $("preserveColors").addEventListener("change", event => { state.preserveColors = event.target.checked; for (const item of state.items) { item.output = null; item.status = "待转换"; item.error = ""; } $("resultPanel").classList.remove("visible"); state.current = null; renderQueue(); setStatus(state.items.length ? "颜色保留设置已改变，请重新转换文件。" : `颜色标注默认不保留，当前为${state.preserveColors ? "保留" : "不保留"}。`); });
+    function updateEditorPreview() {
+      const source = $("xhtmlSource").value;
+      $("xhtmlPreview").srcdoc = source || "<p style='font-family:sans-serif;color:#687583;padding:16px'>打开或输入 XHTML 后会在这里预览。</p>";
+      $("editorDownload").disabled = !source.trim();
+    }
+    $("xhtmlInput").addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      $("xhtmlSource").value = await file.text();
+      $("xhtmlName").value = /\.x?html?$/i.test(file.name) ? file.name.replace(/\.(?:xhtml|html?)$/i, "") + ".xhtml" : file.name + ".xhtml";
+      updateEditorPreview();
+      setStatus(`已打开 ${file.name}，可以编辑后导出。`, "ok");
+      event.target.value = "";
+    });
+    $("xhtmlSource").addEventListener("input", updateEditorPreview);
+    $("editorClear").addEventListener("click", () => { $("xhtmlSource").value = ""; $("xhtmlName").value = "edited-Sigil.xhtml"; updateEditorPreview(); });
+    $("editorDownload").addEventListener("click", () => {
+      const name = ($("xhtmlName").value.trim() || "edited-Sigil.xhtml").replace(/[\\/:*?"<>|]+/g, "_").replace(/\.html?$/i, ".xhtml");
+      const blob = new Blob([$("xhtmlSource").value], { type: "application/xhtml+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = name.endsWith(".xhtml") ? name : `${name}.xhtml`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus(`已导出 ${link.download}。`, "ok");
+    });
     $("convertBtn").addEventListener("click", convertAll); $("clearBtn").addEventListener("click", () => { state.items = []; state.current = null; $("resultPanel").classList.remove("visible"); renderQueue(); setStatus("列表已清空，等待添加文件。"); }); $("downloadBtn").addEventListener("click", () => state.current && download(state.current));
     $("downloadAllBtn").addEventListener("click", async () => { const ready = state.items.filter(item => item.output); for (const item of ready) { download(item); await new Promise(resolve => setTimeout(resolve, 180)); } setStatus(`已开始下载 ${ready.length} 个 XHTML 文件。`, "ok"); }); $("queueBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button) return; const item = state.items.find(candidate => candidate.id === button.dataset.id); if (item) { showResult(item); download(item); } }); renderQueue();
   </script>
