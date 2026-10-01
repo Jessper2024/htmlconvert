@@ -757,6 +757,10 @@ a { color: inherit; }
       const titleEl = xml.createElementNS(ns, "title"); titleEl.textContent = title; head.append(titleEl); const style = xml.createElementNS(ns, "style"); style.setAttribute("type", "text/css"); style.textContent = bookCss; head.append(style); root.append(head);
       const body = xml.createElementNS(ns, "body"); for (const block of normalised.blocks) body.append(xml.importNode(block, true)); root.append(body);
       if (processType === "javbus") await embedExternalImages(body);
+      if (processType === "javbus") {
+        const remainingExternal = [...body.querySelectorAll("img")].filter(image => /^https?:\/\//i.test((image.getAttribute("src") || "").trim())).length;
+        if (remainingExternal) throw new Error(`仍有 ${remainingExternal} 张外链图片未能内嵌，请检查网络后重试`);
+      }
       // Guard the contract of the reflow converter: prose must not retain
       // hard line-break elements or source layout dimensions.  Image sizes
       // remain allowed because the stylesheet caps them at the page width.
