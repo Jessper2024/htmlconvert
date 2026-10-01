@@ -619,6 +619,20 @@ a { color: inherit; }
     function normaliseArticle(article, title, metadata = []) {
       const cleaned = cleanTree(article.cloneNode(true)), blocks = normaliseContainer(cleaned), compact = [];
       for (const block of blocks) { if (block.classList?.contains("spacer") && compact.at(-1)?.classList?.contains("spacer")) continue; compact.push(block); }
+      if (processType === "javbus_forum") {
+        const separated = [];
+        for (const block of compact) {
+          if (block.tagName?.toLowerCase() !== "p" || !block.querySelector("br")) { separated.push(block); continue; }
+          let paragraph = block.cloneNode(false);
+          const flush = () => { if (hasMeaningful(paragraph)) separated.push(paragraph); paragraph = block.cloneNode(false); };
+          for (const child of [...block.childNodes]) {
+            if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === "br") { flush(); separated.push(makeSpacer()); }
+            else paragraph.append(child.cloneNode(true));
+          }
+          flush();
+        }
+        compact.splice(0, compact.length, ...separated);
+      }
       for (const block of compact) if (block.tagName?.toLowerCase() !== "pre") { if (processType !== "javbus_forum") flattenBreaks(block); pruneEmptyInline(block); }
       const hasVisibleTitle = compact.some(node => ["h1","h2"].includes(node.tagName?.toLowerCase()) && textOf(node) === title);
       if (title && !hasVisibleTitle) { const heading = document.createElement("h1"); heading.textContent = title; compact.unshift(heading); }
